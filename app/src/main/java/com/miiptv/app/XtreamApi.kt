@@ -7,35 +7,121 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
-data class Channel(val id: String, val name: String, val categoryId: String, val icon: String?)
-data class Category(val id: String, val name: String)
+data class Channel(
+    val id: String,
+    val name: String,
+    val categoryId: String,
+    val icon: String?
+)
 
-class XtreamApi(private val host: String, private val user: String, private val pass: String) {
-    private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
-    private val root = host.trim().trimEnd('/').let { if (it.startsWith("http")) it else "http://$it" }
+data class Category(
+    val id: String,
+    val name: String
+)
 
-    private suspend fun request(path: String): String = withContext(Dispatchers.IO) {
-        val conn = (URL("$root/$path").openConnection() as HttpURLConnection)
-        conn.connectTimeout = 15000
-        conn.readTimeout = 20000
-        conn.setRequestProperty("User-Agent", "MiIPTV Android")
-        try { conn.inputStream.bufferedReader().use { it.readText() } }
-        finally { conn.disconnect() }
+class XtreamApi(
+    private val host: String,
+    private val user: String,
+    private val pass: String
+) {
+
+    private fun enc(value: String): String {
+        return URLEncoder.encode(value, "UTF-8")
     }
-    private fun authQuery() = "username=${enc(user)}&password=${enc(pass)}"
+
+    private val root: String = host.trim()
+        .trimEnd('/')
+        .let {
+            if (it.startsWith("http://") || it.startsWith("https://")) {
+                it
+            } else {
+                "http://$it"
+            }
+        }
+
+    private suspend fun request(path: String): String =
+        withContext(Dispatchers.IO) {
+
+            val connection =
+                URL("$root/$path").openConnection() as HttpURLConnection
+
+            connection.connectTimeout = 15000
+            connection.readTimeout = 20000
+
+            connection.setRequestProperty(
+                "User-Agent",
+                "MiIPTV Android"
+            )
+
+            try {
+                connection.inputStream.bufferedReader().use {
+                    it.readText()
+                }
+            } finally {
+                connection.disconnect()
+            }
+        }
+
+    private fun authQuery(): String {
+        return "username=${enc(user)}&password=${enc(pass)}"
+    }
+
+    // CARGAR CATEGORÍAS
 
     suspend fun categories(): List<Category> {
-        val arr = JSONArray(request("player_api.php?${authQuery()}&action=get_live_categories"))
-        return (0 until arr.length()).map { i ->
-            val o = arr.getJSONObject(i); Category(o.optString("category_id"), o.optString("category_name"))
+
+        val response = request(
+            "player_api.php?${authQuery()}&action=get_live_categories"
+        )
+
+        val json = JSONArray(response)
+
+        return (0 until json.length()).map { index ->
+
+            val item = json.getJSONObject(index)
+
+            Category(
+                id = item.optString("category_id"),
+                name = item.optString("category_name")
+            )
         }
     }
+
+    // CARGAR CANALES
+
     suspend fun channels(): List<Channel> {
-        val arr = JSONArray(request("player_api.php?${authQuery()}&action=get_live_streams"))
-        return (0 until arr.length()).map { i ->
-            val o = arr.getJSONObject(i)
-            Channel(o.optString("stream_id"), o.optString("name"), o.optString("category_id"), o.optString("stream_icon").takeIf { it.isNotBlank() })
+
+        val response = request(
+            "player_api.php?${authQuery()}&action=get_live_streams"
+        )
+
+        val json = JSONArray(response)
+
+        return (0 until json.length()).map { index ->
+
+            val item = json.getJSONObject(index)
+
+            Channel(
+                id = item.optString("stream_id"),
+                name = item.optString("name"),
+                categoryId = item.optString("category_id"),
+                icon = item.optString("stream_icon")
+                    .takeIf { it.isNotBlank() }
+            )
         }
     }
-    fun streamUrl(channel: Channel): String = "$root/${enc(user)}/${enc(pass)}/${channel.id}.m3u8"
+
+    // URL DE TRANSMISIÓN IPTV
+
+    fun streamUrl(channel: Channel): String {
+
+        return "$root/live/${enc(user)}/${enc(pass)}/${channel.id}.ts"
+    }
+
+    // URL ALTERNATIVA HLS
+
+    fun streamUrlHls(channel: Channel): String {
+
+        return "$root/live/${enc(user)}/${enc(pass)}/${channel.id}.m3u8"
+    }
 }
