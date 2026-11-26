@@ -15,19 +15,23 @@ import androidx.media3.ui.PlayerView
 class PlayerActivity : Activity() {
 
     private var player: ExoPlayer? = null
+
     private lateinit var statusText: TextView
     private lateinit var playerView: PlayerView
+
+    private var primaryUrl: String = ""
+    private var alternativeUrl: String = ""
+    private var triedAlternative = false
+
+    private var channelTitle: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val channelTitle =
-            intent.getStringExtra("title") ?: "Canal de TV"
+        channelTitle = intent.getStringExtra("title") ?: "Canal"
+        primaryUrl = intent.getStringExtra("url") ?: ""
+        alternativeUrl = intent.getStringExtra("alternative_url") ?: ""
 
-        val streamUrl =
-            intent.getStringExtra("url")
-
-        // Construir pantalla
         val layout = LinearLayout(this)
         layout.orientation = LinearLayout.VERTICAL
         layout.setBackgroundColor(Color.BLACK)
@@ -37,7 +41,6 @@ class PlayerActivity : Activity() {
         titleText.textSize = 20f
         titleText.setTextColor(Color.WHITE)
         titleText.setPadding(16, 16, 16, 16)
-
         layout.addView(titleText)
 
         playerView = PlayerView(this)
@@ -57,7 +60,6 @@ class PlayerActivity : Activity() {
         statusText.textSize = 15f
         statusText.setTextColor(Color.WHITE)
         statusText.setPadding(16, 12, 16, 12)
-
         layout.addView(statusText)
 
         val backButton = TextView(this)
@@ -68,79 +70,85 @@ class PlayerActivity : Activity() {
         backButton.setOnClickListener {
             finish()
         }
-
         layout.addView(backButton)
 
         setContentView(layout)
 
-        // Verificar que exista URL
-        if (streamUrl.isNullOrBlank()) {
-            statusText.text = "Error: no se recibió el enlace del canal."
+        if (primaryUrl.isBlank()) {
+            statusText.text = "ERROR: No se recibió la URL del canal."
             return
         }
 
-        // Inicializar reproductor de forma segura
+        startPlayer()
+    }
+
+    private fun startPlayer() {
+
         try {
 
-            val exoPlayer = ExoPlayer.Builder(this).build()
+            val exo = ExoPlayer.Builder(this).build()
+            player = exo
+            playerView.player = exo
 
-            player = exoPlayer
-            playerView.player = exoPlayer
-
-            exoPlayer.addListener(
+            exo.addListener(
                 object : Player.Listener {
 
-                    override fun onPlaybackStateChanged(
-                        playbackState: Int
-                    ) {
+                    override fun onPlaybackStateChanged(state: Int) {
+                        when (state) {
+                            Player.STATE_IDLE ->
+                                statusText.text = "Reproductor esperando..."
 
-                        when (playbackState) {
+                            Player.STATE_BUFFERING ->
+                                statusText.text = "Conectando y cargando transmisión..."
 
-                            Player.STATE_IDLE -> {
-                                statusText.text =
-                                    "Reproductor esperando..."
-                            }
+                            Player.STATE_READY ->
+                                statusText.text = "Reproduciendo: $channelTitle"
 
-                            Player.STATE_BUFFERING -> {
-                                statusText.text =
-                                    "Cargando transmisión..."
-                            }
-
-                            Player.STATE_READY -> {
-                                statusText.text =
-                                    "Reproduciendo: $channelTitle"
-                            }
-
-                            Player.STATE_ENDED -> {
-                                statusText.text =
-                                    "La transmisión finalizó."
-                            }
+                            Player.STATE_ENDED ->
+                                statusText.text = "La transmisión finalizó."
                         }
                     }
 
-                    override fun onPlayerError(
-                        error: PlaybackException
-                    ) {
+                    override fun onPlayerError(error: PlaybackException) {
 
-                        statusText.text =
-                            "No se pudo reproducir este canal. " +
-                            "Probá con otro o revisá la señal."
+                        if (!triedAlternative && alternativeUrl.isNotBlank()) {
 
+                            triedAlternative = true
+
+                            statusText.text =
+                                "Falló el primer formato. Probando formato alternativo..."
+
+                            exo.stop()
+                            exo.clearMediaItems()
+                            exo.setMediaItem(
+                                MediaItem.fromUri(alternativeUrl)
+                            )
+                            exo.prepare()
+                            exo.play()
+
+                        } else {
+
+                            statusText.text =
+                                "ERROR DE REPRODUCCIÓN\n\n" +
+                                "Código: ${error.errorCode}\n" +
+                                "Tipo: ${error.errorCodeName}\n" +
+                                "Detalle: ${error.message ?: "Sin detalle"}\n\n" +
+                                "Se probaron los formatos disponibles."
+                        }
                     }
                 }
             )
 
-            val mediaItem = MediaItem.fromUri(streamUrl)
+            statusText.text = "Probando transmisión TS..."
 
-            exoPlayer.setMediaItem(mediaItem)
-            exoPlayer.prepare()
-            exoPlayer.play()
+            exo.setMediaItem(MediaItem.fromUri(primaryUrl))
+            exo.prepare()
+            exo.play()
 
         } catch (e: Exception) {
 
             statusText.text =
-                "Error al iniciar el reproductor: ${e.message}"
-
+                "Error al crear reproductor:\n${e.javaClass.simpleName}\n${e.message}"
         }
     }
 
@@ -150,12 +158,9 @@ class PlayerActivity : Activity() {
     }
 
     override fun onDestroy() {
-
         playerView.player = null
-
         player?.release()
         player = null
-
         super.onDestroy()
     }
 }
