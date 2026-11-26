@@ -20,10 +20,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 class MainActivity : Activity() {
-
-    private val scope = CoroutineScope(
-        Dispatchers.Main + SupervisorJob()
-    )
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private lateinit var host: EditText
     private lateinit var username: EditText
@@ -32,416 +29,197 @@ class MainActivity : Activity() {
     private lateinit var list: LinearLayout
 
     private var api: XtreamApi? = null
-
     private var allChannels: List<Channel> = emptyList()
     private var categories: List<Category> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // CONTENEDOR PRINCIPAL
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(18, 18, 18, 18)
+            setBackgroundColor(Color.rgb(16, 18, 26))
+        }
 
-        val root = LinearLayout(this)
-        root.orientation = LinearLayout.VERTICAL
-        root.setPadding(18, 18, 18, 18)
-        root.setBackgroundColor(Color.rgb(16, 18, 26))
-
-        // TÍTULO
-
-        val title = TextView(this)
-        title.text = "MI IPTV"
-        title.textSize = 26f
-        title.setTextColor(Color.WHITE)
-        title.setPadding(8, 12, 8, 12)
-
+        val title = TextView(this).apply {
+            text = "MI IPTV"
+            textSize = 26f
+            setTextColor(Color.WHITE)
+            setPadding(8, 12, 8, 12)
+        }
         root.addView(title)
 
-        // SERVIDOR
-
-        host = EditText(this)
-        host.setText("tv.m3uts.xyz")
-        host.hint = "Servidor / Host"
-        host.setSingleLine(true)
-        host.setTextColor(Color.WHITE)
-
+        host = EditText(this).apply {
+            setText("tv.m3uts.xyz")
+            hint = "Servidor / Host"
+            setSingleLine(true)
+            setTextColor(Color.WHITE)
+        }
         root.addView(host)
 
-        // USUARIO
-
-        username = EditText(this)
-        username.setText("m")
-        username.hint = "Usuario"
-        username.setSingleLine(true)
-        username.setTextColor(Color.WHITE)
-
+        username = EditText(this).apply {
+            setText("m")
+            hint = "Usuario"
+            setSingleLine(true)
+            setTextColor(Color.WHITE)
+        }
         root.addView(username)
 
-        // CONTRASEÑA
-
-        password = EditText(this)
-        password.setText("m")
-        password.hint = "Contraseña"
-        password.setSingleLine(true)
-        password.setTextColor(Color.WHITE)
-
+        password = EditText(this).apply {
+            setText("m")
+            hint = "Contraseña"
+            setSingleLine(true)
+            setTextColor(Color.WHITE)
+        }
         root.addView(password)
 
-        // BOTÓN CONECTAR
-
-        val connectButton = Button(this)
-        connectButton.text = "Conectar e importar canales"
-
+        val connectButton = Button(this).apply {
+            text = "Conectar e importar lista M3U"
+        }
         root.addView(connectButton)
 
-        // MENÚ TV / EVENTOS
-
-        val tabs = LinearLayout(this)
-        tabs.orientation = LinearLayout.HORIZONTAL
-
-        val liveButton = Button(this)
-        liveButton.text = "TV EN VIVO"
-
-        val eventsButton = Button(this)
-        eventsButton.text = "EVENTOS"
-
-        tabs.addView(
-            liveButton,
-            LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                1f
-            )
-        )
-
-        tabs.addView(
-            eventsButton,
-            LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                1f
-            )
-        )
-
+        val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val liveButton = Button(this).apply { text = "TV EN VIVO" }
+        val eventsButton = Button(this).apply { text = "EVENTOS" }
+        tabs.addView(liveButton, LinearLayout.LayoutParams(0, -2, 1f))
+        tabs.addView(eventsButton, LinearLayout.LayoutParams(0, -2, 1f))
         root.addView(tabs)
 
-        // ESTADO
-
-        status = TextView(this)
-        status.text = "Ingresá los datos y tocá Conectar."
-        status.textSize = 14f
-        status.setTextColor(Color.WHITE)
-        status.setPadding(8, 12, 8, 12)
-
+        status = TextView(this).apply {
+            text = "Ingresá los datos y tocá Conectar."
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            setPadding(8, 12, 8, 12)
+        }
         root.addView(status)
 
-        // LISTA DESPLAZABLE
-
-        val scrollView = ScrollView(this)
-
-        list = LinearLayout(this)
-        list.orientation = LinearLayout.VERTICAL
-
-        scrollView.addView(list)
-
-        root.addView(
-            scrollView,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        )
-
+        val scroll = ScrollView(this)
+        list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        scroll.addView(list)
+        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
 
-        // CONECTAR E IMPORTAR
+        connectButton.setOnClickListener(View.OnClickListener {
+            list.removeAllViews()
+            status.text = "Descargando lista M3U original del servidor..."
 
-        connectButton.setOnClickListener(
-            View.OnClickListener {
+            val server = host.text.toString().trim()
+            val user = username.text.toString().trim()
+            val pass = password.text.toString()
+            if (server.isBlank() || user.isBlank() || pass.isBlank()) {
+                status.text = "Completá servidor, usuario y contraseña."
+                return@OnClickListener
+            }
 
-                status.text = "Conectando al servidor..."
-                list.removeAllViews()
-
-                val server = host.text.toString().trim()
-                val user = username.text.toString().trim()
-                val pass = password.text.toString()
-
-                if (server.isEmpty() || user.isEmpty() || pass.isEmpty()) {
-                    status.text = "Completá servidor, usuario y contraseña."
-                    return@OnClickListener
-                }
-
-                api = XtreamApi(server, user, pass)
-
-                scope.launch {
-
-                    try {
-
-                        status.text = "Importando categorías..."
-
-                        val connectedApi = api!!
-
-                        categories = connectedApi.categories()
-
-                        status.text = "Importando canales..."
-
-                        allChannels = connectedApi.channels()
-
-                        status.text =
-                            "Conectado • ${allChannels.size} canales • ${categories.size} categorías"
-
-                        showChannels(allChannels)
-
-                    } catch (e: Exception) {
-
-                        status.text =
-                            "Error de conexión:\n${e.message ?: "No se pudo conectar al servidor"}"
-
-                    }
+            api = XtreamApi(server, user, pass)
+            scope.launch {
+                try {
+                    val connected = api!!
+                    allChannels = connected.channels()
+                    categories = connected.categories()
+                    status.text = "Lista M3U importada • ${allChannels.size} canales • ${categories.size} grupos"
+                    showChannels(allChannels)
+                } catch (e: Exception) {
+                    status.text = "Error importando M3U:\n${e.message ?: e.javaClass.simpleName}"
                 }
             }
-        )
+        })
 
-        // BOTÓN TV EN VIVO
+        liveButton.setOnClickListener(View.OnClickListener {
+            showChannels(allChannels)
+        })
 
-        liveButton.setOnClickListener(
-            View.OnClickListener {
-
-                showChannels(allChannels)
-
-            }
-        )
-
-        // BOTÓN EVENTOS
-
-        eventsButton.setOnClickListener(
-            View.OnClickListener {
-
-                showEvents()
-
-            }
-        )
+        eventsButton.setOnClickListener(View.OnClickListener {
+            showEvents()
+        })
     }
 
-    // ==================================================
-    // MOSTRAR CANALES
-    // ==================================================
-
     private fun showChannels(items: List<Channel>) {
-
         list.removeAllViews()
 
         if (items.isEmpty()) {
-
-            val message = TextView(this)
-
-            message.text = "Conectá para cargar los canales."
-            message.setTextColor(Color.WHITE)
-            message.textSize = 16f
-            message.setPadding(12, 16, 12, 16)
-
-            list.addView(message)
-
+            val msg = TextView(this).apply {
+                text = "Conectá para importar los canales."
+                setTextColor(Color.WHITE)
+                setPadding(12, 16, 12, 16)
+            }
+            list.addView(msg)
             return
         }
 
-        // SPINNER CATEGORÍAS
-
+        val options = listOf("Todos los grupos") + categories.map { it.name }
         val spinner = Spinner(this)
-
-        val options = mutableListOf<String>()
-
-        options.add("Todas las categorías")
-
-        for (category in categories) {
-            options.add(category.name)
-        }
-
-        val adapter = ArrayAdapter(
-            this,
-            android.R.layout.simple_spinner_item,
-            options
-        )
-
-        adapter.setDropDownViewResource(
-            android.R.layout.simple_spinner_dropdown_item
-        )
-
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, options)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         spinner.adapter = adapter
-
         list.addView(spinner)
 
-        // CONTENEDOR DE CANALES
-
-        val channelBox = LinearLayout(this)
-        channelBox.orientation = LinearLayout.VERTICAL
-
+        val channelBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         list.addView(channelBox)
 
-        // FILTRAR CANALES
-
-        fun populateChannels(categoryName: String) {
-
+        fun populate(groupName: String) {
             channelBox.removeAllViews()
-
-            val selectedCategory = categories.find {
-                it.name == categoryName
-            }
-
-            val filteredChannels =
-                if (selectedCategory == null) {
-                    items
-                } else {
-                    items.filter {
-                        it.categoryId == selectedCategory.id
-                    }
-                }
-
-            // BOTONES DE CANALES
-
-            for (channel in filteredChannels) {
-
-                val channelButton = Button(this)
-
-                channelButton.text = "▶  ${channel.name}"
-
-                channelButton.setOnClickListener(
-                    View.OnClickListener {
-
+            val filtered = if (groupName == "Todos los grupos") items else items.filter { it.categoryId == groupName }
+            filtered.forEach { channel ->
+                val button = Button(this).apply {
+                    text = "▶  ${channel.name}"
+                    setOnClickListener(View.OnClickListener {
                         val currentApi = api
-
                         if (currentApi == null) {
-
-                            status.text =
-                                "Primero conectá al servidor."
-
+                            status.text = "Primero conectá al servidor."
                             return@OnClickListener
                         }
-
-                        // ABRIR REPRODUCTOR
-
-                        val intent = Intent(
-                            this@MainActivity,
-                            PlayerActivity::class.java
-                        )
-
-                        intent.putExtra(
-                            "title",
-                            channel.name
-                        )
-
-                        // URL PRINCIPAL TS
-
-                        intent.putExtra(
-                            "url",
-                            currentApi.streamUrl(channel)
-                        )
-
-                        // URL ALTERNATIVA HLS
-
-                        intent.putExtra(
-                            "alternative_url",
-                            currentApi.streamUrlHls(channel)
-                        )
-
+                        val intent = Intent(this@MainActivity, PlayerActivity::class.java)
+                        intent.putExtra("title", channel.name)
+                        // Stream URL comes from the M3U itself and is not rewritten.
+                        intent.putExtra("url", currentApi.streamUrl(channel))
+                        intent.putExtra("alternative_url", "")
                         startActivity(intent)
-
-                    }
-                )
-
-                channelBox.addView(channelButton)
+                    })
+                }
+                channelBox.addView(button)
             }
-
-            // SI NO HAY CANALES
-
-            if (filteredChannels.isEmpty()) {
-
-                val emptyMessage = TextView(this)
-
-                emptyMessage.text =
-                    "No hay canales en esta categoría."
-
-                emptyMessage.setTextColor(Color.WHITE)
-                emptyMessage.textSize = 16f
-                emptyMessage.setPadding(12, 16, 12, 16)
-
-                channelBox.addView(emptyMessage)
+            if (filtered.isEmpty()) {
+                channelBox.addView(TextView(this).apply {
+                    text = "No hay canales en este grupo."
+                    setTextColor(Color.WHITE)
+                    setPadding(12, 16, 12, 16)
+                })
             }
         }
 
-        // CARGA INICIAL
-
-        populateChannels("Todas las categorías")
-
-        // CAMBIO DE CATEGORÍA
-
-        spinner.onItemSelectedListener =
-            object : AdapterView.OnItemSelectedListener {
-
-                override fun onItemSelected(
-                    parent: AdapterView<*>?,
-                    view: View?,
-                    position: Int,
-                    id: Long
-                ) {
-
-                    val selectedName = options[position]
-
-                    populateChannels(selectedName)
-                }
-
-                override fun onNothingSelected(
-                    parent: AdapterView<*>?
-                ) {
-                    // No hay selección
-                }
+        populate(options.first())
+        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                populate(options[position])
             }
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
     }
-
-    // ==================================================
-    // EVENTOS
-    // ==================================================
 
     private fun showEvents() {
-
         list.removeAllViews()
+        list.addView(TextView(this).apply {
+            text = """
+                EVENTOS
 
-        val eventsText = TextView(this)
+                Sección preparada para:
+                • Eventos deportivos
+                • Fútbol y boxeo
+                • Shows y espectáculos
+                • Agenda y horarios
+                • Imágenes y enlaces de reproducción
 
-        eventsText.text = """
-            EVENTOS EN VIVO
-
-            Próximas funciones:
-
-            • Eventos deportivos
-            • Fútbol
-            • Boxeo
-            • Shows y espectáculos
-            • Eventos próximos
-            • Fecha y horario
-            • Imágenes de eventos
-            • Reproductor de eventos
-            • Administración de eventos
-
-            Los eventos se podrán agregar
-            y administrar en futuras versiones.
-        """.trimIndent()
-
-        eventsText.textSize = 16f
-        eventsText.setTextColor(Color.WHITE)
-        eventsText.setPadding(16, 16, 16, 16)
-
-        list.addView(eventsText)
+                Los eventos se agregarán desde una futura administración.
+            """.trimIndent()
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            setPadding(16, 16, 16, 16)
+        })
     }
 
-    // ==================================================
-    // CERRAR ACTIVIDAD
-    // ==================================================
-
     override fun onDestroy() {
-
         scope.cancel()
-
         super.onDestroy()
     }
 }

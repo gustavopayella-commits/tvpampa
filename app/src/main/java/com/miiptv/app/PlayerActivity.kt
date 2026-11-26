@@ -3,7 +3,6 @@ package com.miiptv.app
 import android.app.Activity
 import android.os.Bundle
 import android.graphics.Color
-import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.media3.common.MediaItem
@@ -13,142 +12,79 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 
 class PlayerActivity : Activity() {
-
     private var player: ExoPlayer? = null
-
     private lateinit var statusText: TextView
     private lateinit var playerView: PlayerView
-
-    private var primaryUrl: String = ""
-    private var alternativeUrl: String = ""
-    private var triedAlternative = false
-
-    private var channelTitle: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        channelTitle = intent.getStringExtra("title") ?: "Canal"
-        primaryUrl = intent.getStringExtra("url") ?: ""
-        alternativeUrl = intent.getStringExtra("alternative_url") ?: ""
+        val title = intent.getStringExtra("title") ?: "Canal"
+        val url = intent.getStringExtra("url") ?: ""
 
-        val layout = LinearLayout(this)
-        layout.orientation = LinearLayout.VERTICAL
-        layout.setBackgroundColor(Color.BLACK)
-
-        val titleText = TextView(this)
-        titleText.text = channelTitle
-        titleText.textSize = 20f
-        titleText.setTextColor(Color.WHITE)
-        titleText.setPadding(16, 16, 16, 16)
-        layout.addView(titleText)
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.BLACK)
+        }
+        layout.addView(TextView(this).apply {
+            text = title
+            textSize = 20f
+            setTextColor(Color.WHITE)
+            setPadding(16, 16, 16, 16)
+        })
 
         playerView = PlayerView(this)
-        playerView.setBackgroundColor(Color.BLACK)
+        layout.addView(playerView, LinearLayout.LayoutParams(-1, 0, 1f))
 
-        layout.addView(
-            playerView,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        )
-
-        statusText = TextView(this)
-        statusText.text = "Preparando transmisión..."
-        statusText.textSize = 15f
-        statusText.setTextColor(Color.WHITE)
-        statusText.setPadding(16, 12, 16, 12)
+        statusText = TextView(this).apply {
+            text = "Preparando URL original de la lista..."
+            textSize = 15f
+            setTextColor(Color.WHITE)
+            setPadding(16, 12, 16, 12)
+        }
         layout.addView(statusText)
 
-        val backButton = TextView(this)
-        backButton.text = "‹  VOLVER A LOS CANALES"
-        backButton.textSize = 16f
-        backButton.setTextColor(Color.WHITE)
-        backButton.setPadding(16, 18, 16, 18)
-        backButton.setOnClickListener {
-            finish()
-        }
-        layout.addView(backButton)
-
+        layout.addView(TextView(this).apply {
+            text = "‹  VOLVER A LOS CANALES"
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            setPadding(16, 18, 16, 18)
+            setOnClickListener { finish() }
+        })
         setContentView(layout)
 
-        if (primaryUrl.isBlank()) {
-            statusText.text = "ERROR: No se recibió la URL del canal."
+        if (url.isBlank()) {
+            statusText.text = "Error: la lista no entregó una URL para este canal."
             return
         }
 
-        startPlayer()
-    }
-
-    private fun startPlayer() {
-
         try {
-
             val exo = ExoPlayer.Builder(this).build()
             player = exo
             playerView.player = exo
 
-            exo.addListener(
-                object : Player.Listener {
-
-                    override fun onPlaybackStateChanged(state: Int) {
-                        when (state) {
-                            Player.STATE_IDLE ->
-                                statusText.text = "Reproductor esperando..."
-
-                            Player.STATE_BUFFERING ->
-                                statusText.text = "Conectando y cargando transmisión..."
-
-                            Player.STATE_READY ->
-                                statusText.text = "Reproduciendo: $channelTitle"
-
-                            Player.STATE_ENDED ->
-                                statusText.text = "La transmisión finalizó."
-                        }
-                    }
-
-                    override fun onPlayerError(error: PlaybackException) {
-
-                        if (!triedAlternative && alternativeUrl.isNotBlank()) {
-
-                            triedAlternative = true
-
-                            statusText.text =
-                                "Falló el primer formato. Probando formato alternativo..."
-
-                            exo.stop()
-                            exo.clearMediaItems()
-                            exo.setMediaItem(
-                                MediaItem.fromUri(alternativeUrl)
-                            )
-                            exo.prepare()
-                            exo.play()
-
-                        } else {
-
-                            statusText.text =
-                                "ERROR DE REPRODUCCIÓN\n\n" +
-                                "Código: ${error.errorCode}\n" +
-                                "Tipo: ${error.errorCodeName}\n" +
-                                "Detalle: ${error.message ?: "Sin detalle"}\n\n" +
-                                "Se probaron los formatos disponibles."
-                        }
+            exo.addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(state: Int) {
+                    statusText.text = when (state) {
+                        Player.STATE_IDLE -> "Reproductor esperando..."
+                        Player.STATE_BUFFERING -> "Cargando URL original..."
+                        Player.STATE_READY -> "Reproduciendo: $title"
+                        Player.STATE_ENDED -> "La transmisión finalizó."
+                        else -> statusText.text
                     }
                 }
-            )
 
-            statusText.text = "Probando transmisión TS..."
+                override fun onPlayerError(error: PlaybackException) {
+                    statusText.text = "Error de reproducción\nCódigo: ${error.errorCode}\n${error.errorCodeName}\n${error.message ?: "Sin detalles"}"
+                }
+            })
 
-            exo.setMediaItem(MediaItem.fromUri(primaryUrl))
+            // Play exactly the stream URL supplied in the M3U playlist.
+            exo.setMediaItem(MediaItem.fromUri(url))
             exo.prepare()
             exo.play()
-
         } catch (e: Exception) {
-
-            statusText.text =
-                "Error al crear reproductor:\n${e.javaClass.simpleName}\n${e.message}"
+            statusText.text = "Error iniciando reproductor:\n${e.javaClass.simpleName}\n${e.message}"
         }
     }
 
