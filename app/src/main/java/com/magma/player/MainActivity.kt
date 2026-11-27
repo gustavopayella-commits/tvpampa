@@ -1,5 +1,6 @@
 
 package com.pampatv
+
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.net.Uri
@@ -127,7 +128,9 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun PaMpATVRoot() {
     var splashVisible by remember { mutableStateOf(true) }
+
     val transition = rememberInfiniteTransition(label = "pampatv_splash")
+
     val logoScale by transition.animateFloat(
         initialValue = 0.94f,
         targetValue = 1.04f,
@@ -145,6 +148,7 @@ private fun PaMpATVRoot() {
 
     Box(Modifier.fillMaxSize()) {
         PaMpATVApp()
+
         AnimatedVisibility(
             visible = splashVisible,
             enter = fadeIn(animationSpec = tween(250)),
@@ -157,7 +161,9 @@ private fun PaMpATVRoot() {
                 contentAlignment = Alignment.Center
             ) {
                 Image(
-                  painterResource(id = R.drawable.pampatv_logo,
+                    painter = painterResource(
+                        id = R.drawable.pampatv_logo
+                    ),
                     contentDescription = "PaMpATV",
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
@@ -177,22 +183,50 @@ private fun PaMpATVRoot() {
 @Composable
 private fun PaMpATVApp() {
     val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("magma_settings", 0) }
+    val prefs = remember {
+        context.getSharedPreferences("magma_settings", 0)
+    }
     val scope = rememberCoroutineScope()
 
-    var source by remember { mutableStateOf(prefs.getString("source", "M3U") ?: "M3U") }
+    var source by remember {
+        mutableStateOf(prefs.getString("source", "M3U") ?: "M3U")
+    }
     var section by remember { mutableStateOf("TV") }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
-    var setupOpen by remember { mutableStateOf(prefs.getBoolean("setup", true)) }
-    var m3uUrl by remember { mutableStateOf(prefs.getString("m3u", "") ?: "") }
-    var localM3u by remember { mutableStateOf("") }
-    var server by remember { mutableStateOf(prefs.getString("server", "") ?: "") }
-    var username by remember { mutableStateOf(prefs.getString("username", "") ?: "") }
-    var password by remember { mutableStateOf(prefs.getString("password", "") ?: "") }
 
-    val cachedLive = remember { MediaEntryStorage.decode(prefs.getString("cached_live", null)) }
-    val cachedMovies = remember { MediaEntryStorage.decode(prefs.getString("cached_movies", null)) }
-    val cachedSeries = remember { MediaEntryStorage.decode(prefs.getString("cached_series", null)) }
+    var setupOpen by remember {
+        mutableStateOf(prefs.getBoolean("setup", true))
+    }
+
+    var m3uUrl by remember {
+        mutableStateOf(prefs.getString("m3u", "") ?: "")
+    }
+
+    var localM3u by remember { mutableStateOf("") }
+
+    var server by remember {
+        mutableStateOf(prefs.getString("server", "") ?: "")
+    }
+
+    var username by remember {
+        mutableStateOf(prefs.getString("username", "") ?: "")
+    }
+
+    var password by remember {
+        mutableStateOf(prefs.getString("password", "") ?: "")
+    }
+
+    val cachedLive = remember {
+        MediaEntryStorage.decode(prefs.getString("cached_live", null))
+    }
+
+    val cachedMovies = remember {
+        MediaEntryStorage.decode(prefs.getString("cached_movies", null))
+    }
+
+    val cachedSeries = remember {
+        MediaEntryStorage.decode(prefs.getString("cached_series", null))
+    }
 
     var live by remember { mutableStateOf(cachedLive) }
     var movies by remember { mutableStateOf(cachedMovies) }
@@ -200,9 +234,15 @@ private fun PaMpATVApp() {
 
     var status by remember {
         mutableStateOf(
-            if (cachedLive.isNotEmpty() || cachedMovies.isNotEmpty() || cachedSeries.isNotEmpty()) {
+            if (
+                cachedLive.isNotEmpty() ||
+                cachedMovies.isNotEmpty() ||
+                cachedSeries.isNotEmpty()
+            ) {
                 "Conectado: ${cachedLive.size} canales · ${cachedMovies.size} películas · ${cachedSeries.size} series"
-            } else "Agregá una lista M3U o conectá tu cuenta"
+            } else {
+                "Agregá una lista M3U o conectá tu cuenta"
+            }
         )
     }
 
@@ -221,9 +261,14 @@ private fun PaMpATVApp() {
 
     var category by remember { mutableStateOf("Todos") }
     var selected by remember { mutableStateOf<MediaEntry?>(null) }
+
     var favorites by remember {
-        mutableStateOf(prefs.getStringSet("favorites", emptySet())?.toSet() ?: emptySet())
+        mutableStateOf(
+            prefs.getStringSet("favorites", emptySet())?.toSet()
+                ?: emptySet()
+        )
     }
+
     var showFavorites by remember { mutableStateOf(false) }
     var pairingCode by remember { mutableStateOf("") }
 
@@ -232,10 +277,14 @@ private fun PaMpATVApp() {
     ) { uri ->
         if (uri != null) {
             m3uUrl = ""
+
             localM3u = runCatching {
                 context.contentResolver.openInputStream(uri)
-                    ?.bufferedReader()?.use { it.readText() }.orEmpty()
+                    ?.bufferedReader()
+                    ?.use { it.readText() }
+                    .orEmpty()
             }.getOrDefault("")
+
             status = if (localM3u.isNotBlank()) {
                 "Archivo M3U listo para conectar"
             } else {
@@ -253,6 +302,7 @@ private fun PaMpATVApp() {
             .putString("password", password)
             .putBoolean("setup", false)
             .apply()
+
         setupOpen = false
     }
 
@@ -263,15 +313,23 @@ private fun PaMpATVApp() {
         try {
             val loaded = withContext(Dispatchers.IO) {
                 if (source == "M3U") {
-                    require(localM3u.isNotBlank() || m3uUrl.isNotBlank()) {
+                    require(
+                        localM3u.isNotBlank() || m3uUrl.isNotBlank()
+                    ) {
                         "Ingresá una URL o elegí un archivo M3U"
                     }
+
                     val text = if (localM3u.isNotBlank()) {
                         localM3u
                     } else {
                         M3uParser.download(m3uUrl)
                     }
-                    Triple(M3uParser.parseText(text), emptyList(), emptyList())
+
+                    Triple(
+                        M3uParser.parseText(text),
+                        emptyList<MediaEntry>(),
+                        emptyList<MediaEntry>()
+                    )
                 } else {
                     require(
                         server.isNotBlank() &&
@@ -280,8 +338,14 @@ private fun PaMpATVApp() {
                     ) {
                         "Completá servidor, usuario y contraseña"
                     }
+
                     val api = XtreamApi(server, username, password)
-                    Triple(api.live(), api.vod(), api.series())
+
+                    Triple(
+                        api.live(),
+                        api.vod(),
+                        api.series()
+                    )
                 }
             }
 
@@ -295,7 +359,8 @@ private fun PaMpATVApp() {
                 .distinct()
                 .sorted()
 
-            status = "Conectado: ${live.size} canales · ${movies.size} películas · ${series.size} series"
+            status =
+                "Conectado: ${live.size} canales · ${movies.size} películas · ${series.size} series"
 
             prefs.edit()
                 .putString("cached_live", MediaEntryStorage.encode(live))
@@ -304,6 +369,7 @@ private fun PaMpATVApp() {
                 .apply()
 
             saveSettings()
+
         } catch (e: Exception) {
             status = "No se pudo conectar: ${e.message ?: "revisá los datos"}"
         } finally {
@@ -321,7 +387,9 @@ private fun PaMpATVApp() {
         ModalNavigationDrawer(
             drawerState = drawerState,
             drawerContent = {
-                ModalDrawerSheet(drawerContainerColor = Color(0xFFFFF9FC)) {
+                ModalDrawerSheet(
+                    drawerContainerColor = Color(0xFFFFF9FC)
+                ) {
                     Box(
                         Modifier
                             .fillMaxWidth()
@@ -329,8 +397,11 @@ private fun PaMpATVApp() {
                             .background(MagmaRed),
                         contentAlignment = Alignment.Center
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
                             Text("🔥", fontSize = 43.sp)
+
                             Text(
                                 "PaMpATV",
                                 color = Color.White,
@@ -341,8 +412,14 @@ private fun PaMpATVApp() {
                     }
 
                     listOf(
-                        "TV", "Películas", "Series", "Playlists",
-                        "Ajustes", "Emparejar TV", "Premium", "Telegram"
+                        "TV",
+                        "Películas",
+                        "Series",
+                        "Playlists",
+                        "Ajustes",
+                        "Emparejar TV",
+                        "Premium",
+                        "Telegram"
                     ).forEach { item ->
                         NavigationDrawerItem(
                             label = { Text(item) },
@@ -353,7 +430,10 @@ private fun PaMpATVApp() {
                                 showFavorites = false
                                 category = "Todos"
                             },
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 2.dp),
+                            modifier = Modifier.padding(
+                                horizontal = 9.dp,
+                                vertical = 2.dp
+                            ),
                             icon = {
                                 Icon(
                                     when (item) {
@@ -373,6 +453,7 @@ private fun PaMpATVApp() {
                     }
 
                     Spacer(Modifier.weight(1f))
+
                     Text(
                         "PaMpATV · Android",
                         Modifier.padding(18.dp),
@@ -382,7 +463,11 @@ private fun PaMpATVApp() {
                 }
             }
         ) {
-            Column(Modifier.fillMaxSize().background(MagmaBg)) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .background(MagmaBg)
+            ) {
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -390,8 +475,16 @@ private fun PaMpATVApp() {
                         .padding(horizontal = 8.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                        Icon(Icons.Default.Menu, null, tint = Color.White)
+                    IconButton(
+                        onClick = {
+                            scope.launch { drawerState.open() }
+                        }
+                    ) {
+                        Icon(
+                            Icons.Default.Menu,
+                            null,
+                            tint = Color.White
+                        )
                     }
 
                     Text(
@@ -411,22 +504,34 @@ private fun PaMpATVApp() {
                         Icon(
                             Icons.Default.Favorite,
                             null,
-                            tint = if (showFavorites) MagmaGold else Color.White
+                            tint = if (showFavorites) {
+                                MagmaGold
+                            } else {
+                                Color.White
+                            }
                         )
                     }
 
                     IconButton(onClick = { setupOpen = true }) {
-                        Icon(Icons.Default.Add, null, tint = Color.White)
+                        Icon(
+                            Icons.Default.Add,
+                            null,
+                            tint = Color.White
+                        )
                     }
                 }
 
                 if (section in listOf("TV", "Películas", "Series")) {
                     LazyRow(
-                        Modifier.fillMaxWidth().background(Color.White),
+                        Modifier
+                            .fillMaxWidth()
+                            .background(Color.White),
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         contentPadding = PaddingValues(horizontal = 8.dp)
                     ) {
-                        items(listOf("TV", "Películas", "Series", "Playlists")) { tab ->
+                        items(
+                            listOf("TV", "Películas", "Series", "Playlists")
+                        ) { tab ->
                             TextButton(
                                 onClick = {
                                     section = tab
@@ -436,8 +541,16 @@ private fun PaMpATVApp() {
                             ) {
                                 Text(
                                     tab,
-                                    color = if (section == tab) MagmaRed else MagmaInk,
-                                    fontWeight = if (section == tab) FontWeight.Bold else FontWeight.Normal
+                                    color = if (section == tab) {
+                                        MagmaRed
+                                    } else {
+                                        MagmaInk
+                                    },
+                                    fontWeight = if (section == tab) {
+                                        FontWeight.Bold
+                                    } else {
+                                        FontWeight.Normal
+                                    }
                                 )
                             }
                         }
@@ -446,7 +559,8 @@ private fun PaMpATVApp() {
 
                 when (section) {
                     "Ajustes" -> SettingsPage(
-                        status, source,
+                        status,
+                        source,
                         { setupOpen = true },
                         { scope.launch { loadAll() } }
                     )
@@ -470,21 +584,31 @@ private fun PaMpATVApp() {
                         source = source,
                         status = status,
                         onManage = { setupOpen = true },
-                        onRefresh = { scope.launch { loadAll() } },
+                        onRefresh = {
+                            scope.launch { loadAll() }
+                        },
                         onDelete = {
                             live = emptyList()
                             movies = emptyList()
                             series = emptyList()
                             categories = emptyList()
                             favorites = emptySet()
+
                             source = "M3U"
                             m3uUrl = ""
                             localM3u = ""
                             server = ""
                             username = ""
                             password = ""
-                            status = "Agregá una lista M3U o conectá tu cuenta"
-                            prefs.edit().clear().putBoolean("setup", true).apply()
+
+                            status =
+                                "Agregá una lista M3U o conectá tu cuenta"
+
+                            prefs.edit()
+                                .clear()
+                                .putBoolean("setup", true)
+                                .apply()
+
                             setupOpen = true
                         }
                     )
@@ -495,9 +619,16 @@ private fun PaMpATVApp() {
                             onValueChange = { search = it },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            placeholder = { Text("Buscar ${section.lowercase()}...") },
-                            leadingIcon = { Icon(Icons.Default.Search, null) },
+                                .padding(
+                                    horizontal = 12.dp,
+                                    vertical = 8.dp
+                                ),
+                            placeholder = {
+                                Text("Buscar ${section.lowercase()}...")
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.Search, null)
+                            },
                             singleLine = true,
                             shape = RoundedCornerShape(13.dp)
                         )
@@ -509,10 +640,18 @@ private fun PaMpATVApp() {
                         }
 
                         val filtered = sourceItems.filter {
-                            (it.name.contains(search, true) ||
-                                it.category.contains(search, true)) &&
-                                (category == "Todos" || it.category == category) &&
-                                (!showFavorites || favorites.contains(it.id))
+                            (
+                                it.name.contains(search, true) ||
+                                    it.category.contains(search, true)
+                            ) &&
+                                (
+                                    category == "Todos" ||
+                                        it.category == category
+                                ) &&
+                                (
+                                    !showFavorites ||
+                                        favorites.contains(it.id)
+                                )
                         }
 
                         LazyRow(
@@ -540,15 +679,23 @@ private fun PaMpATVApp() {
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 5.dp),
+                                .padding(
+                                    horizontal = 14.dp,
+                                    vertical = 5.dp
+                                ),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                if (showFavorites) "Favoritos" else "${filtered.size} elementos",
+                                if (showFavorites) {
+                                    "Favoritos"
+                                } else {
+                                    "${filtered.size} elementos"
+                                },
                                 color = MagmaInk,
                                 fontSize = 12.sp,
                                 modifier = Modifier.weight(1f)
                             )
+
                             Text(
                                 status,
                                 color = MagmaRed,
@@ -559,26 +706,34 @@ private fun PaMpATVApp() {
 
                         if (filtered.isEmpty()) {
                             Box(
-                                Modifier.weight(1f).fillMaxWidth(),
+                                Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Column(
+                                    horizontalAlignment =
+                                        Alignment.CenterHorizontally
+                                ) {
                                     Icon(
                                         Icons.Default.LiveTv,
                                         null,
                                         tint = MagmaRed,
                                         modifier = Modifier.size(48.dp)
                                     )
+
                                     Text(
                                         "Todavía no hay contenido",
                                         color = MagmaInk,
                                         fontWeight = FontWeight.SemiBold
                                     )
+
                                     Text(
                                         "Agregá una lista M3U o una cuenta Smarters",
                                         color = Color.Gray,
                                         fontSize = 12.sp
                                     )
+
                                     Button(
                                         onClick = { setupOpen = true },
                                         modifier = Modifier.padding(top = 10.dp)
@@ -592,23 +747,31 @@ private fun PaMpATVApp() {
                                 columns = GridCells.Adaptive(105.dp),
                                 modifier = Modifier.weight(1f),
                                 contentPadding = PaddingValues(9.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement =
+                                    Arrangement.spacedBy(8.dp),
+                                verticalArrangement =
+                                    Arrangement.spacedBy(8.dp)
                             ) {
                                 items(filtered, key = { it.id }) { entry ->
                                     Card(
                                         Modifier
                                             .fillMaxWidth()
-                                            .clickable { selected = entry },
+                                            .clickable {
+                                                selected = entry
+                                            },
                                         shape = RoundedCornerShape(12.dp),
                                         colors = CardDefaults.cardColors(
                                             containerColor = Color.White
                                         )
                                     ) {
                                         Column(
-                                            Modifier.padding(9.dp).height(112.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center
+                                            Modifier
+                                                .padding(9.dp)
+                                                .height(112.dp),
+                                            horizontalAlignment =
+                                                Alignment.CenterHorizontally,
+                                            verticalArrangement =
+                                                Arrangement.Center
                                         ) {
                                             Box(
                                                 Modifier
@@ -617,22 +780,36 @@ private fun PaMpATVApp() {
                                                         Color(0xFFFFF0E5),
                                                         RoundedCornerShape(12.dp)
                                                     ),
-                                                contentAlignment = Alignment.Center
+                                                contentAlignment =
+                                                    Alignment.Center
                                             ) {
-                                                if (entry.logo.startsWith("http", true)) {
+                                                if (
+                                                    entry.logo.startsWith(
+                                                        "http",
+                                                        true
+                                                    )
+                                                ) {
                                                     AsyncImage(
                                                         model = entry.logo,
-                                                        contentDescription = entry.name,
+                                                        contentDescription =
+                                                            entry.name,
                                                         modifier = Modifier
                                                             .fillMaxSize()
                                                             .padding(3.dp),
-                                                        contentScale = ContentScale.Fit
+                                                        contentScale =
+                                                            ContentScale.Fit
                                                     )
                                                 } else {
                                                     Text(
-                                                        if (entry.kind == "live") "▶"
-                                                        else if (entry.kind == "series") "▣"
-                                                        else "🎬",
+                                                        if (entry.kind == "live") {
+                                                            "▶"
+                                                        } else if (
+                                                            entry.kind == "series"
+                                                        ) {
+                                                            "▣"
+                                                        } else {
+                                                            "🎬"
+                                                        },
                                                         fontSize = 23.sp,
                                                         color = MagmaRed
                                                     )
@@ -649,9 +826,14 @@ private fun PaMpATVApp() {
                                                 color = MagmaInk
                                             )
 
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Row(
+                                                verticalAlignment =
+                                                    Alignment.CenterVertically
+                                            ) {
                                                 Text(
-                                                    entry.category.ifBlank { section },
+                                                    entry.category.ifBlank {
+                                                        section
+                                                    },
                                                     fontSize = 9.sp,
                                                     color = MagmaRed,
                                                     modifier = Modifier.weight(1f),
@@ -660,13 +842,24 @@ private fun PaMpATVApp() {
 
                                                 IconButton(
                                                     onClick = {
-                                                        favorites = if (favorites.contains(entry.id)) {
-                                                            favorites - entry.id
-                                                        } else {
-                                                            favorites + entry.id
-                                                        }
+                                                        favorites =
+                                                            if (
+                                                                favorites.contains(
+                                                                    entry.id
+                                                                )
+                                                            ) {
+                                                                favorites -
+                                                                    entry.id
+                                                            } else {
+                                                                favorites +
+                                                                    entry.id
+                                                            }
+
                                                         prefs.edit()
-                                                            .putStringSet("favorites", favorites)
+                                                            .putStringSet(
+                                                                "favorites",
+                                                                favorites
+                                                            )
                                                             .apply()
                                                     },
                                                     modifier = Modifier.size(26.dp)
@@ -674,12 +867,17 @@ private fun PaMpATVApp() {
                                                     Icon(
                                                         Icons.Default.Favorite,
                                                         null,
-                                                        tint = if (favorites.contains(entry.id)) {
+                                                        tint = if (
+                                                            favorites.contains(
+                                                                entry.id
+                                                            )
+                                                        ) {
                                                             MagmaRed
                                                         } else {
                                                             Color.LightGray
                                                         },
-                                                        modifier = Modifier.size(16.dp)
+                                                        modifier =
+                                                            Modifier.size(16.dp)
                                                     )
                                                 }
                                             }
@@ -719,7 +917,9 @@ private fun PaMpATVApp() {
                     onClose = { selected = null }
                 )
             } else {
-                PlayerDialog(entry) { selected = null }
+                PlayerDialog(entry) {
+                    selected = null
+                }
             }
         }
 
@@ -728,13 +928,19 @@ private fun PaMpATVApp() {
                 onDismissRequest = { setupOpen = false },
                 title = { Text("Agregar playlist") },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            horizontalArrangement =
+                                Arrangement.spacedBy(6.dp)
+                        ) {
                             FilterChip(
                                 selected = source == "M3U",
                                 onClick = { source = "M3U" },
                                 label = { Text("M3U / M3U8") }
                             )
+
                             FilterChip(
                                 selected = source == "Smarters",
                                 onClick = { source = "Smarters" },
@@ -749,8 +955,11 @@ private fun PaMpATVApp() {
                                 label = { Text("URL de lista M3U") },
                                 singleLine = true
                             )
+
                             OutlinedButton(
-                                onClick = { filePicker.launch(arrayOf("*/*")) },
+                                onClick = {
+                                    filePicker.launch(arrayOf("*/*"))
+                                },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text("Elegir archivo M3U")
@@ -762,27 +971,36 @@ private fun PaMpATVApp() {
                                 label = { Text("Servidor / URL") },
                                 singleLine = true
                             )
+
                             OutlinedTextField(
                                 username,
                                 { username = it },
                                 label = { Text("Usuario") },
                                 singleLine = true
                             )
+
                             OutlinedTextField(
                                 password,
                                 { password = it },
                                 label = { Text("Contraseña") },
-                                visualTransformation = PasswordVisualTransformation(),
+                                visualTransformation =
+                                    PasswordVisualTransformation(),
                                 singleLine = true
                             )
                         }
 
-                        Text(status, fontSize = 11.sp, color = MagmaRed)
+                        Text(
+                            status,
+                            fontSize = 11.sp,
+                            color = MagmaRed
+                        )
                     }
                 },
                 confirmButton = {
                     Button(
-                        onClick = { scope.launch { loadAll() } },
+                        onClick = {
+                            scope.launch { loadAll() }
+                        },
                         enabled = !busy
                     ) {
                         if (busy) {
@@ -813,7 +1031,9 @@ private fun SettingsPage(
     onRefresh: () -> Unit
 ) {
     Column(
-        Modifier.fillMaxSize().padding(18.dp),
+        Modifier
+            .fillMaxSize()
+            .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
@@ -822,14 +1042,21 @@ private fun SettingsPage(
             fontWeight = FontWeight.Bold,
             color = MagmaInk
         )
+
         Text("Fuente actual: $source", color = MagmaInk)
         Text(status, color = MagmaRed, fontSize = 12.sp)
 
-        Button(onClick = onEdit, modifier = Modifier.fillMaxWidth()) {
+        Button(
+            onClick = onEdit,
+            modifier = Modifier.fillMaxWidth()
+        ) {
             Text("Editar conexión")
         }
 
-        OutlinedButton(onClick = onRefresh, modifier = Modifier.fillMaxWidth()) {
+        OutlinedButton(
+            onClick = onRefresh,
+            modifier = Modifier.fillMaxWidth()
+        ) {
             Text("Actualizar contenido")
         }
 
@@ -853,7 +1080,9 @@ private fun PlaylistPage(
     var confirmDelete by remember { mutableStateOf(false) }
 
     Column(
-        Modifier.fillMaxSize().padding(18.dp),
+        Modifier
+            .fillMaxSize()
+            .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -864,14 +1093,21 @@ private fun PlaylistPage(
                 color = MagmaInk,
                 modifier = Modifier.weight(1f)
             )
+
             Button(onClick = onManage) {
                 Text("+ Añadir lista")
             }
         }
 
-        Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = Color.White
+            )
+        ) {
             Row(
-                Modifier.fillMaxWidth().padding(14.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -881,17 +1117,32 @@ private fun PlaylistPage(
                     modifier = Modifier.size(34.dp)
                 )
 
-                Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .padding(start = 10.dp)
+                ) {
                     Text(
-                        if (source == "M3U") "Lista M3U" else "Cuenta Smarters",
+                        if (source == "M3U") {
+                            "Lista M3U"
+                        } else {
+                            "Cuenta Smarters"
+                        },
                         fontWeight = FontWeight.Bold,
                         color = MagmaInk
                     )
-                    Text(status, color = Color.Gray, fontSize = 11.sp)
+
+                    Text(
+                        status,
+                        color = Color.Gray,
+                        fontSize = 11.sp
+                    )
                 }
 
                 Box {
-                    IconButton(onClick = { menuExpanded = true }) {
+                    IconButton(
+                        onClick = { menuExpanded = true }
+                    ) {
                         Icon(
                             Icons.Default.MoreVert,
                             contentDescription = "Opciones de lista",
@@ -905,7 +1156,9 @@ private fun PlaylistPage(
                     ) {
                         DropdownMenuItem(
                             text = { Text("Editar conexión") },
-                            leadingIcon = { Icon(Icons.Default.Edit, null) },
+                            leadingIcon = {
+                                Icon(Icons.Default.Edit, null)
+                            },
                             onClick = {
                                 menuExpanded = false
                                 onManage()
@@ -944,7 +1197,9 @@ private fun PlaylistPage(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Borrar lista") },
             text = {
-                Text("¿Querés borrar esta lista y sus datos guardados de este dispositivo?")
+                Text(
+                    "¿Querés borrar esta lista y sus datos guardados de este dispositivo?"
+                )
             },
             confirmButton = {
                 TextButton(
@@ -957,7 +1212,9 @@ private fun PlaylistPage(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) {
+                TextButton(
+                    onClick = { confirmDelete = false }
+                ) {
                     Text("Cancelar")
                 }
             }
@@ -966,9 +1223,14 @@ private fun PlaylistPage(
 }
 
 @Composable
-private fun PairPage(code: String, onCode: (String) -> Unit) {
+private fun PairPage(
+    code: String,
+    onCode: (String) -> Unit
+) {
     Column(
-        Modifier.fillMaxSize().padding(22.dp),
+        Modifier
+            .fillMaxSize()
+            .padding(22.dp),
         verticalArrangement = Arrangement.spacedBy(13.dp)
     ) {
         Text(
@@ -977,7 +1239,11 @@ private fun PairPage(code: String, onCode: (String) -> Unit) {
             fontWeight = FontWeight.Bold,
             color = MagmaInk
         )
-        Text("Ingresá el código que se muestra en el televisor.", color = MagmaInk)
+
+        Text(
+            "Ingresá el código que se muestra en el televisor.",
+            color = MagmaInk
+        )
 
         OutlinedTextField(
             code,
@@ -995,12 +1261,21 @@ private fun PairPage(code: String, onCode: (String) -> Unit) {
             Text("Añadir TV")
         }
 
-        Card(colors = CardDefaults.cardColors(containerColor = MagmaNavy)) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MagmaNavy
+            )
+        ) {
             Column(
                 Modifier.padding(15.dp),
                 verticalArrangement = Arrangement.spacedBy(7.dp)
             ) {
-                Text("AYUDA", color = Color.White, fontWeight = FontWeight.Bold)
+                Text(
+                    "AYUDA",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+
                 Text(
                     "1. Abrí la aplicación en el televisor.\n" +
                         "2. Entrá a la pantalla para agregar playlist.\n" +
@@ -1021,9 +1296,14 @@ private fun PairPage(code: String, onCode: (String) -> Unit) {
 }
 
 @Composable
-private fun InfoPage(title: String, message: String) {
+private fun InfoPage(
+    title: String,
+    message: String
+) {
     Column(
-        Modifier.fillMaxSize().padding(20.dp),
+        Modifier
+            .fillMaxSize()
+            .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
@@ -1032,6 +1312,7 @@ private fun InfoPage(title: String, message: String) {
             fontWeight = FontWeight.Bold,
             color = MagmaInk
         )
+
         Text(message, color = MagmaInk)
     }
 }
@@ -1048,17 +1329,26 @@ private fun SeriesEpisodesDialog(
     var episodes by remember(entry.id) {
         mutableStateOf<List<MediaEntry>>(emptyList())
     }
-    var loading by remember(entry.id) { mutableStateOf(true) }
-    var error by remember(entry.id) { mutableStateOf("") }
+
+    var loading by remember(entry.id) {
+        mutableStateOf(true)
+    }
+
+    var error by remember(entry.id) {
+        mutableStateOf("")
+    }
 
     LaunchedEffect(entry.id) {
         try {
             episodes = withContext(Dispatchers.IO) {
-                XtreamApi(server, user, pass).episodes(entry.seriesId, entry.name)
+                XtreamApi(server, user, pass)
+                    .episodes(entry.seriesId, entry.name)
             }
         } catch (e: Exception) {
-            error = e.message ?: "No se pudieron cargar los episodios"
+            error = e.message
+                ?: "No se pudieron cargar los episodios"
         }
+
         loading = false
     }
 
@@ -1068,23 +1358,39 @@ private fun SeriesEpisodesDialog(
         text = {
             when {
                 loading -> CircularProgressIndicator()
+
                 error.isNotBlank() -> Text(error)
-                episodes.isEmpty() -> Text("No se encontraron episodios para esta serie.")
-                else -> LazyColumn(Modifier.heightIn(max = 380.dp)) {
-                    items(episodes.size) { index ->
-                        val ep = episodes[index]
-                        ListItem(
-                            headlineContent = { Text(ep.name) },
-                            supportingContent = { Text(ep.category) },
-                            leadingContent = {
-                                Icon(
-                                    Icons.Default.PlayCircle,
-                                    null,
-                                    tint = MagmaRed
-                                )
-                            },
-                            modifier = Modifier.clickable { onPlay(ep) }
-                        )
+
+                episodes.isEmpty() -> {
+                    Text("No se encontraron episodios para esta serie.")
+                }
+
+                else -> {
+                    LazyColumn(
+                        Modifier.heightIn(max = 380.dp)
+                    ) {
+                        items(episodes.size) { index ->
+                            val ep = episodes[index]
+
+                            ListItem(
+                                headlineContent = {
+                                    Text(ep.name)
+                                },
+                                supportingContent = {
+                                    Text(ep.category)
+                                },
+                                leadingContent = {
+                                    Icon(
+                                        Icons.Default.PlayCircle,
+                                        null,
+                                        tint = MagmaRed
+                                    )
+                                },
+                                modifier = Modifier.clickable {
+                                    onPlay(ep)
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -1107,7 +1413,9 @@ private fun PlayerDialog(
 
     var fullscreen by remember { mutableStateOf(false) }
     var zoomMode by remember { mutableIntStateOf(0) }
-    var playbackError by remember(entry.url) { mutableStateOf("") }
+    var playbackError by remember(entry.url) {
+        mutableStateOf("")
+    }
 
     val player = remember(entry.url) {
         val httpFactory = DefaultHttpDataSource.Factory()
@@ -1118,8 +1426,9 @@ private fun PlayerDialog(
             .setReadTimeoutMs(30000)
             .setAllowCrossProtocolRedirects(true)
 
-        val mediaSourceFactory = DefaultMediaSourceFactory(context)
-            .setDataSourceFactory(httpFactory)
+        val mediaSourceFactory =
+            DefaultMediaSourceFactory(context)
+                .setDataSourceFactory(httpFactory)
 
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(mediaSourceFactory)
@@ -1153,7 +1462,9 @@ private fun PlayerDialog(
                 setMediaItem(itemBuilder.build())
 
                 addListener(object : Player.Listener {
-                    override fun onPlayerError(error: PlaybackException) {
+                    override fun onPlayerError(
+                        error: PlaybackException
+                    ) {
                         playbackError = when (error.errorCode) {
                             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ->
                                 "No se pudo conectar con el servidor."
@@ -1169,7 +1480,9 @@ private fun PlayerDialog(
                         }
                     }
 
-                    override fun onPlaybackStateChanged(playbackState: Int) {
+                    override fun onPlaybackStateChanged(
+                        playbackState: Int
+                    ) {
                         if (playbackState == Player.STATE_READY) {
                             playbackError = ""
                         }
@@ -1188,7 +1501,8 @@ private fun PlayerDialog(
     }
 
     DisposableEffect(fullscreen) {
-        val previousOrientation = activity?.requestedOrientation
+        val previousOrientation =
+            activity?.requestedOrientation
 
         if (fullscreen) {
             activity?.requestedOrientation =
@@ -1200,14 +1514,17 @@ private fun PlayerDialog(
 
         onDispose {
             if (previousOrientation != null) {
-                activity?.requestedOrientation = previousOrientation
+                activity?.requestedOrientation =
+                    previousOrientation
             }
         }
     }
 
     Dialog(
         onDismissRequest = onClose,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false
+        )
     ) {
         Surface(
             modifier = if (fullscreen) {
@@ -1248,7 +1565,11 @@ private fun PlayerDialog(
                         maxLines = 1
                     )
 
-                    IconButton(onClick = { fullscreen = !fullscreen }) {
+                    IconButton(
+                        onClick = {
+                            fullscreen = !fullscreen
+                        }
+                    ) {
                         Icon(
                             imageVector = if (fullscreen) {
                                 Icons.Default.FullscreenExit
@@ -1303,6 +1624,7 @@ private fun PlayerDialog(
                         },
                         update = { view ->
                             view.player = player
+
                             view.resizeMode = if (zoomMode == 0) {
                                 AspectRatioFrameLayout.RESIZE_MODE_FIT
                             } else {
@@ -1331,7 +1653,9 @@ private fun PlayerDialog(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(onClick = { player.seekBack() }) {
+                    TextButton(
+                        onClick = { player.seekBack() }
+                    ) {
                         Icon(
                             Icons.Default.Replay10,
                             contentDescription = null,
@@ -1357,7 +1681,9 @@ private fun PlayerDialog(
                         Text("Play", color = Color.White)
                     }
 
-                    TextButton(onClick = { player.seekForward() }) {
+                    TextButton(
+                        onClick = { player.seekForward() }
+                    ) {
                         Icon(
                             Icons.Default.Forward10,
                             contentDescription = null,
@@ -1376,6 +1702,7 @@ private fun PlayerDialog(
                             contentDescription = null,
                             tint = Color.White
                         )
+
                         Text(
                             if (zoomMode == 0) "Ajustar" else "Zoom",
                             color = Color.White
@@ -1390,7 +1717,10 @@ private fun PlayerDialog(
                             .align(Alignment.End)
                             .padding(end = 8.dp)
                     ) {
-                        Text("Cerrar reproductor", color = Color.White)
+                        Text(
+                            "Cerrar reproductor",
+                            color = Color.White
+                        )
                     }
                 }
             }
@@ -1399,6 +1729,7 @@ private fun PlayerDialog(
 }
 
 private object M3uParser {
+
     fun download(address: String): String {
         require(
             address.startsWith("http://") ||
@@ -1410,11 +1741,14 @@ private object M3uParser {
         return URL(address).openConnection().apply {
             connectTimeout = 15000
             readTimeout = 30000
-        }.getInputStream().bufferedReader().use { it.readText() }
+        }.getInputStream()
+            .bufferedReader()
+            .use { it.readText() }
     }
 
     fun parseText(text: String): List<MediaEntry> {
         val out = mutableListOf<MediaEntry>()
+
         var name = "Canal"
         var logo = ""
         var group = "TV"
@@ -1425,13 +1759,20 @@ private object M3uParser {
 
             if (line.startsWith("#EXTINF", true)) {
                 name = line.substringAfterLast(',', "Canal")
-                    .trim().ifBlank { "Canal" }
+                    .trim()
+                    .ifBlank { "Canal" }
 
                 logo = Regex("tvg-logo=\"([^\"]*)\"")
-                    .find(line)?.groupValues?.get(1).orEmpty()
+                    .find(line)
+                    ?.groupValues
+                    ?.get(1)
+                    .orEmpty()
 
                 group = Regex("group-title=\"([^\"]*)\"")
-                    .find(line)?.groupValues?.get(1) ?: "TV"
+                    .find(line)
+                    ?.groupValues
+                    ?.get(1)
+                    ?: "TV"
 
             } else if (
                 line.isNotBlank() &&
@@ -1439,7 +1780,7 @@ private object M3uParser {
                 (
                     line.startsWith("http", true) ||
                         line.startsWith("rtmp", true)
-                    )
+                )
             ) {
                 out.add(
                     MediaEntry(
@@ -1451,6 +1792,7 @@ private object M3uParser {
                         "live"
                     )
                 )
+
                 name = "Canal"
                 logo = ""
                 group = "TV"
@@ -1471,21 +1813,30 @@ private class XtreamApi(
     private val p = Uri.encode(pass)
 
     private fun get(action: String): String {
-        val url = "$base/player_api.php?username=$u&password=$p&action=$action"
+        val url =
+            "$base/player_api.php?username=$u&password=$p&action=$action"
 
         return URL(url).openConnection().apply {
             connectTimeout = 15000
             readTimeout = 30000
-        }.getInputStream().bufferedReader().use { it.readText() }
+        }.getInputStream()
+            .bufferedReader()
+            .use { it.readText() }
     }
 
-    private fun array(action: String) = JSONArray(get(action))
+    private fun array(action: String) =
+        JSONArray(get(action))
 
-    private fun categories(action: String): Map<String, String> {
+    private fun categories(
+        action: String
+    ): Map<String, String> {
         val a = array(action)
+
         return (0 until a.length()).associate { i ->
             val o = a.getJSONObject(i)
-            o.optString("category_id") to o.optString("category_name")
+
+            o.optString("category_id") to
+                o.optString("category_name")
         }
     }
 
@@ -1496,6 +1847,7 @@ private class XtreamApi(
         return (0 until a.length()).map { i ->
             val o = a.getJSONObject(i)
             val id = o.optString("stream_id")
+
             val ext = o.optString("container_extension")
                 .ifBlank { "ts" }
 
@@ -1517,6 +1869,7 @@ private class XtreamApi(
         return (0 until a.length()).map { i ->
             val o = a.getJSONObject(i)
             val id = o.optString("stream_id")
+
             val ext = o.optString("container_extension")
                 .ifBlank { "mp4" }
 
@@ -1563,7 +1916,9 @@ private class XtreamApi(
             )
         )
 
-        val all = root.optJSONObject("episodes") ?: return emptyList()
+        val all = root.optJSONObject("episodes")
+            ?: return emptyList()
+
         val out = mutableListOf<MediaEntry>()
         val keys = all.keys()
 
@@ -1574,6 +1929,7 @@ private class XtreamApi(
             for (i in 0 until arr.length()) {
                 val ep = arr.getJSONObject(i)
                 val id = ep.optString("id")
+
                 val ext = ep.optString("container_extension")
                     .ifBlank { "mp4" }
 
