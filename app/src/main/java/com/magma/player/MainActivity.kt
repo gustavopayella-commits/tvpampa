@@ -1,5 +1,6 @@
 
-package com.pampatv
+package com.pampatv.
+R
 
 import com.pampatv.R
 import android.app.Activity
