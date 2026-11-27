@@ -1,7 +1,9 @@
+
 package com.pampatv
 
 import com.pampatv.R
 import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.os.Bundle
@@ -47,14 +49,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -201,8 +202,9 @@ private fun PaMpATVApp() {
     var section by remember { mutableStateOf("TV") }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
 
-    // El formulario de listas se abre solo cuando el usuario lo solicita.
-    var setupOpen by remember { mutableStateOf(false) }
+    var setupOpen by remember {
+        mutableStateOf(prefs.getBoolean("setup", true))
+    }
 
     var m3uUrl by remember {
         mutableStateOf(prefs.getString("m3u", "") ?: "")
@@ -421,20 +423,6 @@ private fun PaMpATVApp() {
             status = "No se pudo conectar: ${e.message ?: "revisá los datos"}"
         } finally {
             busy = false
-        }
-    }
-
-    // Si ya había una lista o cuenta guardada pero todavía no existe caché,
-    // intenta reconectar en segundo plano. Nunca abre el formulario al iniciar.
-    LaunchedEffect(Unit) {
-        val hasCachedContent = live.isNotEmpty() || movies.isNotEmpty() || series.isNotEmpty()
-        val hasSavedSource = if (source == "M3U") {
-            localM3u.isNotBlank() || m3uUrl.isNotBlank()
-        } else {
-            server.isNotBlank() && username.isNotBlank() && password.isNotBlank()
-        }
-        if (!hasCachedContent && hasSavedSource) {
-            loadAll()
         }
     }
 
@@ -667,16 +655,14 @@ private fun PaMpATVApp() {
                             password = ""
 
                             status =
-                                "No hay listas guardadas. Podés agregar una cuando quieras."
+                                "Agregá una lista M3U o conectá tu cuenta"
 
-                            // Borrar la lista debe dejar la sección vacía.
-                            // No abrir automáticamente el formulario para agregar otra.
                             prefs.edit()
                                 .clear()
-                                .putBoolean("setup", false)
+                                .putBoolean("setup", true)
                                 .apply()
 
-                            setupOpen = false
+                            setupOpen = true
                         }
                     )
 
@@ -1504,6 +1490,12 @@ private fun PlayerDialog(
     var playbackError by remember(entry.url) {
         mutableStateOf("")
     }
+    var playbackStatus by remember(entry.url) {
+        mutableStateOf("Preparando señal…")
+    }
+    var hasVideoTrack by remember(entry.url) {
+        mutableStateOf(false)
+    }
 
     val player = remember(entry.url) {
         val httpFactory = DefaultHttpDataSource.Factory()
@@ -1520,26 +1512,11 @@ private fun PlayerDialog(
             .setReadTimeoutMs(60000)
             .setAllowCrossProtocolRedirects(true)
 
-        // Buffer equilibrado para streaming en vivo y conexiones variables.
-        // Mantiene una reserva inicial razonable sin demorar demasiado el inicio.
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                15_000, // buffer mínimo
-                50_000, // buffer máximo
-                2_500,  // inicio de reproducción
-                5_000   // reanudación después de un corte
-            )
-            .setPrioritizeTimeOverSizeThresholds(true)
-            .build()
-
         val mediaSourceFactory =
             DefaultMediaSourceFactory(context)
                 .setDataSourceFactory(httpFactory)
-                .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(5))
 
         ExoPlayer.Builder(context)
-            .setLoadControl(loadControl)
-            .setHandleAudioBecomingNoisy(true)
             .setMediaSourceFactory(mediaSourceFactory)
             .build()
             .apply {
@@ -1574,6 +1551,7 @@ private fun PlayerDialog(
                     override fun onPlayerError(
                         error: PlaybackException
                     ) {
+                        playbackStatus = "No se pudo iniciar la reproducción"
                         playbackError = when (error.errorCode) {
                             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ->
                                 "No se pudo conectar con el servidor."
@@ -1592,8 +1570,43 @@ private fun PlayerDialog(
                     override fun onPlaybackStateChanged(
                         playbackState: Int
                     ) {
-                        if (playbackState == Player.STATE_READY) {
-                            playbackError = ""
+                        when (playbackState) {
+                            Player.STATE_BUFFERING -> {
+                                playbackStatus = "Conectando / cargando señal…"
+                            }
+                            Player.STATE_READY -> {
+                                playbackError = ""
+                                playbackStatus = if (hasVideoTrack) {
+                                    "Se recibió una pista de video"
+                                } else {
+                                    "Conectado, esperando pista de video…"
+                                }
+                            }
+                            Player.STATE_ENDED -> {
+                                playbackStatus = "La reproducción terminó"
+                            }
+                            Player.STATE_IDLE -> {
+                                playbackStatus = "Reproductor en espera"
+                            }
+                        }
+                    }
+
+                    override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                        hasVideoTrack = tracks.groups.any {
+                            it.type == C.TRACK_TYPE_VIDEO
+                        }
+                        playbackStatus = if (hasVideoTrack) {
+                            "Se recibió una pista de video"
+                        } else {
+                            "No se detectó una pista de video"
+                        }
+                    }
+
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        if (isPlaying && hasVideoTrack) {
+                            playbackStatus = "Reproduciendo video"
+                        } else if (!isPlaying && hasVideoTrack) {
+                            playbackStatus = "Video cargado; reproducción pausada"
                         }
                     }
                 })
@@ -1609,15 +1622,17 @@ private fun PlayerDialog(
         }
     }
 
-    // Pantalla completa sin forzar el giro del dispositivo.
-    // Forzar landscape desde un Dialog puede reiniciar la Activity y volver
-    // a mostrar el splash; por eso conservamos la orientación actual y solo
-    // ocultamos las barras del sistema mientras el reproductor está expandido.
+    // En pantalla completa: orientación horizontal y barras del sistema ocultas.
+    // Al salir o cerrar el reproductor se restauran los valores anteriores.
     DisposableEffect(fullscreen) {
-        val decorView = activity?.window?.decorView
+        val window = activity?.window
+        val decorView = window?.decorView
+        val previousOrientation = activity?.requestedOrientation
         val previousSystemUi = decorView?.systemUiVisibility ?: 0
 
         if (fullscreen) {
+            activity?.requestedOrientation =
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             decorView?.systemUiVisibility = (
                 View.SYSTEM_UI_FLAG_FULLSCREEN or
                     View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
@@ -1626,13 +1641,14 @@ private fun PlayerDialog(
                     View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
                     View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                 )
-        } else if (decorView != null) {
-            decorView.systemUiVisibility = previousSystemUi
         }
 
         onDispose {
             if (decorView != null) {
                 decorView.systemUiVisibility = previousSystemUi
+            }
+            if (previousOrientation != null) {
+                activity?.requestedOrientation = previousOrientation
             }
         }
     }
@@ -1735,10 +1751,8 @@ private fun PlayerDialog(
                                 }
 
                                 setShowBuffering(
-                                    PlayerView.SHOW_BUFFERING_ALWAYS
+                                    PlayerView.SHOW_BUFFERING_WHEN_PLAYING
                                 )
-                                keepScreenOn = true
-                                setShowSubtitleButton(true)
                             }
                         },
                         update = { view ->
@@ -1754,28 +1768,24 @@ private fun PlayerDialog(
                     )
 
                     if (playbackError.isNotBlank()) {
-                        Column(
+                        Text(
+                            text = playbackError,
+                            color = Color.White,
                             modifier = Modifier
                                 .align(Alignment.Center)
-                                .padding(20.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Text(
-                                text = playbackError,
-                                color = Color.White
-                            )
-                            Button(onClick = {
-                                playbackError = ""
-                                player.seekToDefaultPosition()
-                                player.prepare()
-                                player.playWhenReady = true
-                            }) {
-                                Icon(Icons.Default.Refresh, contentDescription = null)
-                                Spacer(Modifier.width(6.dp))
-                                Text("Reintentar conexión")
-                            }
-                        }
+                                .padding(20.dp)
+                        )
+                    } else if (!hasVideoTrack || !player.isPlaying) {
+                        Text(
+                            text = playbackStatus,
+                            color = Color.White,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(12.dp)
+                                .background(Color(0xAA202020), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            fontSize = 12.sp
+                        )
                     }
                 }
 
