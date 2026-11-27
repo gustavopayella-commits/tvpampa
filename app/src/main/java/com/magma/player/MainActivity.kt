@@ -63,6 +63,44 @@ data class MediaEntry(
     val seriesId: String = ""
 )
 
+
+private object MediaEntryStorage {
+    fun encode(entries: List<MediaEntry>): String {
+        val array = JSONArray()
+        entries.forEach { entry ->
+            array.put(JSONObject().apply {
+                put("id", entry.id)
+                put("name", entry.name)
+                put("url", entry.url)
+                put("category", entry.category)
+                put("logo", entry.logo)
+                put("kind", entry.kind)
+                put("seriesId", entry.seriesId)
+            })
+        }
+        return array.toString()
+    }
+
+    fun decode(value: String?): List<MediaEntry> {
+        if (value.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val array = JSONArray(value)
+            (0 until array.length()).map { index ->
+                val item = array.getJSONObject(index)
+                MediaEntry(
+                    id = item.optString("id"),
+                    name = item.optString("name"),
+                    url = item.optString("url"),
+                    category = item.optString("category"),
+                    logo = item.optString("logo"),
+                    kind = item.optString("kind", "live"),
+                    seriesId = item.optString("seriesId")
+                )
+            }
+        }.getOrDefault(emptyList())
+    }
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,13 +123,24 @@ fun MagmaApp() {
     var server by remember { mutableStateOf(prefs.getString("server", "") ?: "") }
     var username by remember { mutableStateOf(prefs.getString("username", "") ?: "") }
     var password by remember { mutableStateOf(prefs.getString("password", "") ?: "") }
-    var status by remember { mutableStateOf("Agregá una lista M3U o conectá tu cuenta") }
+    val cachedLive = remember { MediaEntryStorage.decode(prefs.getString("cached_live", null)) }
+    val cachedMovies = remember { MediaEntryStorage.decode(prefs.getString("cached_movies", null)) }
+    val cachedSeries = remember { MediaEntryStorage.decode(prefs.getString("cached_series", null)) }
+    var live by remember { mutableStateOf(cachedLive) }
+    var movies by remember { mutableStateOf(cachedMovies) }
+    var series by remember { mutableStateOf(cachedSeries) }
+    var status by remember {
+        mutableStateOf(
+            if (cachedLive.isNotEmpty() || cachedMovies.isNotEmpty() || cachedSeries.isNotEmpty()) {
+                "Conectado: ${cachedLive.size} canales · ${cachedMovies.size} películas · ${cachedSeries.size} series"
+            } else "Agregá una lista M3U o conectá tu cuenta"
+        )
+    }
     var search by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    var live by remember { mutableStateOf(listOf<MediaEntry>()) }
-    var movies by remember { mutableStateOf(listOf<MediaEntry>()) }
-    var series by remember { mutableStateOf(listOf<MediaEntry>()) }
-    var categories by remember { mutableStateOf(listOf<String>()) }
+    var categories by remember {
+        mutableStateOf((cachedLive + cachedMovies + cachedSeries).map { it.category }.filter { it.isNotBlank() }.distinct().sorted())
+    }
     var category by remember { mutableStateOf("Todos") }
     var selected by remember { mutableStateOf<MediaEntry?>(null) }
     var favorites by remember { mutableStateOf(prefs.getStringSet("favorites", emptySet())?.toSet() ?: emptySet()) }
@@ -135,6 +184,11 @@ fun MagmaApp() {
             series = loaded.third
             categories = (live + movies + series).map { it.category }.filter { it.isNotBlank() }.distinct().sorted()
             status = "Conectado: ${live.size} canales · ${movies.size} películas · ${series.size} series"
+            prefs.edit()
+                .putString("cached_live", MediaEntryStorage.encode(live))
+                .putString("cached_movies", MediaEntryStorage.encode(movies))
+                .putString("cached_series", MediaEntryStorage.encode(series))
+                .apply()
             saveSettings()
         } catch (e: Exception) {
             status = "No se pudo conectar: ${e.message ?: "revisá los datos"}"
@@ -187,7 +241,28 @@ fun MagmaApp() {
                     "Emparejar TV" -> PairPage(pairingCode, { pairingCode = it })
                     "Premium" -> InfoPage("Premium", "La activación Premium depende del proveedor oficial de la aplicación. Esta reconstrucción no puede validar compras ni licencias del servicio original.")
                     "Telegram" -> InfoPage("Telegram", "Configurá aquí el enlace de soporte de tu proveedor cuando dispongas de él.")
-                    "Playlists" -> PlaylistPage(source, status, { setupOpen = true }, { scope.launch { loadAll() } })
+                    "Playlists" -> PlaylistPage(
+                        source = source,
+                        status = status,
+                        onManage = { setupOpen = true },
+                        onRefresh = { scope.launch { loadAll() } },
+                        onDelete = {
+                            live = emptyList()
+                            movies = emptyList()
+                            series = emptyList()
+                            categories = emptyList()
+                            favorites = emptySet()
+                            source = "M3U"
+                            m3uUrl = ""
+                            localM3u = ""
+                            server = ""
+                            username = ""
+                            password = ""
+                            status = "Agregá una lista M3U o conectá tu cuenta"
+                            prefs.edit().clear().putBoolean("setup", true).apply()
+                            setupOpen = true
+                        }
+                    )
                     else -> {
                         OutlinedTextField(value = search, onValueChange = { search = it }, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), placeholder = { Text("Buscar ${section.lowercase()}...") }, leadingIcon = { Icon(Icons.Default.Search, null) }, singleLine = true, shape = RoundedCornerShape(13.dp))
                         val sourceItems = when (section) { "Películas" -> movies; "Series" -> series; else -> live }
@@ -287,17 +362,79 @@ private fun SettingsPage(status: String, source: String, onEdit: () -> Unit, onR
 }
 
 @Composable
-private fun PlaylistPage(source: String, status: String, onManage: () -> Unit, onRefresh: () -> Unit) {
+private fun PlaylistPage(
+    source: String,
+    status: String,
+    onManage: () -> Unit,
+    onRefresh: () -> Unit,
+    onDelete: () -> Unit
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+
     Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) { Text("Playlists", fontSize = 23.sp, fontWeight = FontWeight.Bold, color = MagmaInk, modifier = Modifier.weight(1f)); Button(onClick = onManage) { Text("+ Añadir lista") } }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Playlists", fontSize = 23.sp, fontWeight = FontWeight.Bold, color = MagmaInk, modifier = Modifier.weight(1f))
+            Button(onClick = onManage) { Text("+ Añadir lista") }
+        }
         Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
-            Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Icon(Icons.Default.PlaylistPlay, null, tint = MagmaRed, modifier = Modifier.size(34.dp))
-                Column(Modifier.weight(1f).padding(start = 10.dp)) { Text(if (source == "M3U") "Lista M3U" else "Cuenta Smarters", fontWeight = FontWeight.Bold, color = MagmaInk); Text(status, color = Color.Gray, fontSize = 11.sp) }
-                Icon(Icons.Default.MoreVert, null, tint = MagmaInk)
+                Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                    Text(if (source == "M3U") "Lista M3U" else "Cuenta Smarters", fontWeight = FontWeight.Bold, color = MagmaInk)
+                    Text(status, color = Color.Gray, fontSize = 11.sp)
+                }
+                Box {
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Opciones de lista", tint = MagmaInk)
+                    }
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Editar conexión") },
+                            leadingIcon = { Icon(Icons.Default.Edit, null) },
+                            onClick = {
+                                menuExpanded = false
+                                onManage()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Borrar lista") },
+                            leadingIcon = { Icon(Icons.Default.Delete, null, tint = MagmaRed) },
+                            onClick = {
+                                menuExpanded = false
+                                confirmDelete = true
+                            }
+                        )
+                    }
+                }
             }
         }
-        OutlinedButton(onClick = onRefresh, modifier = Modifier.fillMaxWidth()) { Text("Actualizar lista") }
+        OutlinedButton(onClick = onRefresh, modifier = Modifier.fillMaxWidth()) {
+            Text("Actualizar lista")
+        }
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Borrar lista") },
+            text = { Text("¿Querés borrar esta lista y sus datos guardados de este dispositivo?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    onDelete()
+                }) { Text("Borrar", color = MagmaRed) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text("Cancelar") }
+            }
+        )
     }
 }
 
