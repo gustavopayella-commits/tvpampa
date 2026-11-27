@@ -1,3 +1,4 @@
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.magma.player"
+    namespace = "com.pampatv"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.magma.player"
+        applicationId = "com.pampatv"
         minSdk = 23
         targetSdk = 35
         versionCode = 2
