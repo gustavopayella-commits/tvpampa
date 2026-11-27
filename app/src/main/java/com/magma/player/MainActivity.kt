@@ -100,6 +100,7 @@ fun MagmaApp() {
 
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
+            m3uUrl = ""
             localM3u = runCatching {
                 context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
             }.getOrDefault("")
@@ -256,7 +257,7 @@ fun MagmaApp() {
                             FilterChip(selected = source == "Smarters", onClick = { source = "Smarters" }, label = { Text("Smarters") })
                         }
                         if (source == "M3U") {
-                            OutlinedTextField(m3uUrl, { m3uUrl = it }, label = { Text("URL de lista M3U") }, singleLine = true)
+                            OutlinedTextField(m3uUrl, { m3uUrl = it; localM3u = "" }, label = { Text("URL de lista M3U") }, singleLine = true)
                             OutlinedButton(onClick = { filePicker.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Elegir archivo M3U") }
                         } else {
                             OutlinedTextField(server, { server = it }, label = { Text("Servidor / URL") }, singleLine = true)
@@ -348,8 +349,6 @@ private fun SeriesEpisodesDialog(entry: MediaEntry, server: String, user: String
 }
 
 @Composable
-
-@Composable
 private fun PlayerDialog(
     entry: MediaEntry,
     onClose: () -> Unit
@@ -396,8 +395,7 @@ private fun PlayerDialog(
     Dialog(
         onDismissRequest = onClose,
         properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = !fullscreen
+            usePlatformDefaultWidth = false
         )
     ) {
         Surface(
