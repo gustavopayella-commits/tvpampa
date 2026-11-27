@@ -158,7 +158,7 @@ private fun PaMpATVRoot() {
                 contentAlignment = Alignment.Center
             ) {
                 Image(
-                    painter = painterResource(id = R.drawable.pampatv_logo),
+                    painterResource(id = com.pampatv.R.drawable.pampatv_logo),
                     contentDescription = "PaMpATV",
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
