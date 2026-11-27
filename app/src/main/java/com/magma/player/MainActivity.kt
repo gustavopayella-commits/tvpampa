@@ -1,4 +1,9 @@
 package com.magma.player
+import android.app.Activity
+import android.content.pm.ActivityInfo
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.media3.ui.AspectRatioFrameLayout
 
 import android.net.Uri
 import android.os.Bundle
@@ -343,13 +348,250 @@ private fun SeriesEpisodesDialog(entry: MediaEntry, server: String, user: String
 }
 
 @Composable
-private fun PlayerDialog(entry: MediaEntry, onClose: () -> Unit) {
+
+@Composable
+private fun PlayerDialog(
+    entry: MediaEntry,
+    onClose: () -> Unit
+) {
     val context = LocalContext.current
-    val player = remember(entry.url) { ExoPlayer.Builder(context).build().apply { setMediaItem(MediaItem.fromUri(Uri.parse(entry.url))); prepare(); playWhenReady = true } }
-    DisposableEffect(player) { onDispose { player.release() } }
-    AlertDialog(onDismissRequest = onClose, title = { Text(entry.name) }, text = {
-        AndroidView(factory = { ctx -> PlayerView(ctx).apply { this.player = player; useController = true } }, modifier = Modifier.fillMaxWidth().height(220.dp))
-    }, confirmButton = { TextButton(onClick = onClose) { Text("Cerrar") } })
+    val activity = context as? Activity
+
+    var fullscreen by remember { mutableStateOf(false) }
+    var zoomMode by remember { mutableIntStateOf(0) }
+
+    val player = remember(entry.url) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(Uri.parse(entry.url)))
+            prepare()
+            playWhenReady = true
+        }
+    }
+
+    DisposableEffect(player) {
+        onDispose {
+            player.release()
+        }
+    }
+
+    // Restaurar orientación al cerrar el reproductor
+    DisposableEffect(fullscreen) {
+        val previousOrientation = activity?.requestedOrientation
+
+        if (fullscreen) {
+            activity?.requestedOrientation =
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            activity?.requestedOrientation =
+                ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+
+        onDispose {
+            if (previousOrientation != null) {
+                activity?.requestedOrientation = previousOrientation
+            }
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = !fullscreen
+        )
+    ) {
+        Surface(
+            modifier = if (fullscreen) {
+                Modifier.fillMaxSize()
+            } else {
+                Modifier
+                    .fillMaxWidth()
+                    .padding(10.dp)
+                    .wrapContentHeight()
+            },
+            color = Color.Black,
+            shape = if (fullscreen) {
+                RoundedCornerShape(0.dp)
+            } else {
+                RoundedCornerShape(16.dp)
+            }
+        ) {
+            Column(
+                modifier = if (fullscreen) {
+                    Modifier.fillMaxSize()
+                } else {
+                    Modifier.fillMaxWidth()
+                }
+            ) {
+                // Cabecera del reproductor
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF171717))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = entry.name,
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1
+                    )
+
+                    IconButton(
+                        onClick = {
+                            fullscreen = !fullscreen
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (fullscreen)
+                                Icons.Default.FullscreenExit
+                            else
+                                Icons.Default.Fullscreen,
+                            contentDescription = "Pantalla completa",
+                            tint = Color.White
+                        )
+                    }
+
+                    IconButton(onClick = onClose) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Cerrar",
+                            tint = Color.White
+                        )
+                    }
+                }
+
+                // Video
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (fullscreen) {
+                                Modifier.weight(1f)
+                            } else {
+                                Modifier.height(250.dp)
+                            }
+                        )
+                        .background(Color.Black),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AndroidView(
+                        factory = { ctx ->
+                            PlayerView(ctx).apply {
+                                this.player = player
+                                useController = true
+                                controllerShowTimeoutMs = 5000
+                                controllerAutoShow = true
+
+                                resizeMode =
+                                    if (zoomMode == 0) {
+                                        AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                    } else {
+                                        AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                    }
+
+                                setShowBuffering(
+                                    PlayerView.SHOW_BUFFERING_WHEN_PLAYING
+                                )
+                            }
+                        },
+                        update = { view ->
+                            view.player = player
+                            view.resizeMode =
+                                if (zoomMode == 0) {
+                                    AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                } else {
+                                    AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                // Opciones adicionales
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF171717))
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = {
+                            player.seekBack()
+                        }
+                    ) {
+                        Icon(
+                            Icons.Default.Replay10,
+                            contentDescription = null,
+                            tint = Color.White
+                        )
+                        Text("10 s", color = Color.White)
+                    }
+
+                    TextButton(
+                        onClick = {
+                            player.playWhenReady = !player.isPlaying
+                        }
+                    ) {
+                        Icon(
+                            if (player.isPlaying)
+                                Icons.Default.Pause
+                            else
+                                Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = Color.White
+                        )
+                        Text("Play", color = Color.White)
+                    }
+
+                    TextButton(
+                        onClick = {
+                            player.seekForward()
+                        }
+                    ) {
+                        Icon(
+                            Icons.Default.Forward10,
+                            contentDescription = null,
+                            tint = Color.White
+                        )
+                        Text("10 s", color = Color.White)
+                    }
+
+                    TextButton(
+                        onClick = {
+                            zoomMode = if (zoomMode == 0) 1 else 0
+                        }
+                    ) {
+                        Icon(
+                            Icons.Default.AspectRatio,
+                            contentDescription = null,
+                            tint = Color.White
+                        )
+                        Text(
+                            if (zoomMode == 0) "Ajustar" else "Zoom",
+                            color = Color.White
+                        )
+                    }
+                }
+
+                if (!fullscreen) {
+                    TextButton(
+                        onClick = onClose,
+                        modifier = Modifier
+                            .align(Alignment.End)
+                            .padding(end = 8.dp)
+                    ) {
+                        Text("Cerrar reproductor", color = Color.White)
+                    }
+                }
+            }
+        }
+    }
 }
 
 private object M3uParser {
