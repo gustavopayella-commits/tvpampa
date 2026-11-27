@@ -54,6 +54,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -200,9 +202,8 @@ private fun PaMpATVApp() {
     var section by remember { mutableStateOf("TV") }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
 
-    var setupOpen by remember {
-        mutableStateOf(prefs.getBoolean("setup", true))
-    }
+    // El formulario de listas se abre solo cuando el usuario lo solicita.
+    var setupOpen by remember { mutableStateOf(false) }
 
     var m3uUrl by remember {
         mutableStateOf(prefs.getString("m3u", "") ?: "")
@@ -421,6 +422,20 @@ private fun PaMpATVApp() {
             status = "No se pudo conectar: ${e.message ?: "revisá los datos"}"
         } finally {
             busy = false
+        }
+    }
+
+    // Si ya había una lista o cuenta guardada pero todavía no existe caché,
+    // intenta reconectar en segundo plano. Nunca abre el formulario al iniciar.
+    LaunchedEffect(Unit) {
+        val hasCachedContent = live.isNotEmpty() || movies.isNotEmpty() || series.isNotEmpty()
+        val hasSavedSource = if (source == "M3U") {
+            localM3u.isNotBlank() || m3uUrl.isNotBlank()
+        } else {
+            server.isNotBlank() && username.isNotBlank() && password.isNotBlank()
+        }
+        if (!hasCachedContent && hasSavedSource) {
+            loadAll()
         }
     }
 
@@ -1504,11 +1519,26 @@ private fun PlayerDialog(
             .setReadTimeoutMs(60000)
             .setAllowCrossProtocolRedirects(true)
 
+        // Buffer equilibrado para streaming en vivo y conexiones variables.
+        // Mantiene una reserva inicial razonable sin demorar demasiado el inicio.
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                15_000, // buffer mínimo
+                50_000, // buffer máximo
+                2_500,  // inicio de reproducción
+                5_000   // reanudación después de un corte
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+
         val mediaSourceFactory =
             DefaultMediaSourceFactory(context)
                 .setDataSourceFactory(httpFactory)
+                .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(5))
 
         ExoPlayer.Builder(context)
+            .setLoadControl(loadControl)
+            .setHandleAudioBecomingNoisy(true)
             .setMediaSourceFactory(mediaSourceFactory)
             .build()
             .apply {
@@ -1704,8 +1734,10 @@ private fun PlayerDialog(
                                 }
 
                                 setShowBuffering(
-                                    PlayerView.SHOW_BUFFERING_WHEN_PLAYING
+                                    PlayerView.SHOW_BUFFERING_ALWAYS
                                 )
+                                keepScreenOn = true
+                                setShowSubtitleButton(true)
                             }
                         },
                         update = { view ->
@@ -1721,13 +1753,28 @@ private fun PlayerDialog(
                     )
 
                     if (playbackError.isNotBlank()) {
-                        Text(
-                            text = playbackError,
-                            color = Color.White,
+                        Column(
                             modifier = Modifier
                                 .align(Alignment.Center)
-                                .padding(20.dp)
-                        )
+                                .padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = playbackError,
+                                color = Color.White
+                            )
+                            Button(onClick = {
+                                playbackError = ""
+                                player.seekToDefaultPosition()
+                                player.prepare()
+                                player.playWhenReady = true
+                            }) {
+                                Icon(Icons.Default.Refresh, contentDescription = null)
+                                Spacer(Modifier.width(6.dp))
+                                Text("Reintentar conexión")
+                            }
+                        }
                     }
                 }
 
