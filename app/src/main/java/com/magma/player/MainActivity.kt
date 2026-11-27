@@ -54,6 +54,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -1496,6 +1497,12 @@ private fun PlayerDialog(
     var hasVideoTrack by remember(entry.url) {
         mutableStateOf(false)
     }
+    var videoInfo by remember(entry.url) {
+        mutableStateOf("Esperando información de video…")
+    }
+    var firstFrameRendered by remember(entry.url) {
+        mutableStateOf(false)
+    }
 
     val player = remember(entry.url) {
         val httpFactory = DefaultHttpDataSource.Factory()
@@ -1552,6 +1559,10 @@ private fun PlayerDialog(
                         error: PlaybackException
                     ) {
                         playbackStatus = "No se pudo iniciar la reproducción"
+                        val causeInfo = generateSequence(error.cause) { it.cause }
+                            .map { "${it.javaClass.simpleName}: ${it.message.orEmpty()}" }
+                            .firstOrNull()
+                            .orEmpty()
                         playbackError = when (error.errorCode) {
                             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ->
                                 "No se pudo conectar con el servidor."
@@ -1565,6 +1576,22 @@ private fun PlayerDialog(
                             else ->
                                 "Error de reproducción (${error.errorCodeName}). ${error.message.orEmpty()}"
                         }
+                        if (causeInfo.isNotBlank()) {
+                            playbackError += "\nDetalle: $causeInfo"
+                        }
+                    }
+
+                    override fun onVideoSizeChanged(videoSize: VideoSize) {
+                        videoInfo = if (videoSize.width > 0 && videoSize.height > 0) {
+                            "Resolución: ${videoSize.width}×${videoSize.height}"
+                        } else {
+                            "Pista detectada; resolución todavía no disponible"
+                        }
+                    }
+
+                    override fun onRenderedFirstFrame() {
+                        firstFrameRendered = true
+                        playbackStatus = "Imagen recibida y mostrada"
                     }
 
                     override fun onPlaybackStateChanged(
@@ -1592,13 +1619,34 @@ private fun PlayerDialog(
                     }
 
                     override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
-                        hasVideoTrack = tracks.groups.any {
+                        val videoGroup = tracks.groups.firstOrNull {
                             it.type == C.TRACK_TYPE_VIDEO
                         }
-                        playbackStatus = if (hasVideoTrack) {
-                            "Se recibió una pista de video"
+                        hasVideoTrack = videoGroup != null
+                        if (videoGroup != null) {
+                            val formats = (0 until videoGroup.length).map { index ->
+                                val format = videoGroup.mediaTrackGroup.getFormat(index)
+                                val codec = format.sampleMimeType ?: format.codecs ?: "códec desconocido"
+                                val resolution = if (format.width > 0 && format.height > 0) {
+                                    "${format.width}×${format.height}"
+                                } else {
+                                    "resolución pendiente"
+                                }
+                                val support = when {
+                                    videoGroup.isTrackSupported(index) -> "compatible"
+                                    else -> "no compatible según ExoPlayer"
+                                }
+                                "$codec · $resolution · $support"
+                            }
+                            videoInfo = formats.joinToString("\n")
+                            playbackStatus = if (firstFrameRendered) {
+                                "Imagen recibida y mostrada"
+                            } else {
+                                "Pista detectada; esperando primer fotograma…"
+                            }
                         } else {
-                            "No se detectó una pista de video"
+                            videoInfo = "No hay formato de video disponible"
+                            playbackStatus = "No se detectó una pista de video"
                         }
                     }
 
@@ -1775,17 +1823,26 @@ private fun PlayerDialog(
                                 .align(Alignment.Center)
                                 .padding(20.dp)
                         )
-                    } else if (!hasVideoTrack || !player.isPlaying) {
-                        Text(
-                            text = playbackStatus,
-                            color = Color.White,
+                    } else if (!firstFrameRendered || !player.isPlaying) {
+                        Column(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
                                 .padding(12.dp)
-                                .background(Color(0xAA202020), RoundedCornerShape(8.dp))
+                                .background(Color(0xCC202020), RoundedCornerShape(8.dp))
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
-                            fontSize = 12.sp
-                        )
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = playbackStatus,
+                                color = Color.White,
+                                fontSize = 12.sp
+                            )
+                            Text(
+                                text = videoInfo,
+                                color = Color(0xFFE0E0E0),
+                                fontSize = 10.sp
+                            )
+                        }
                     }
                 }
 
