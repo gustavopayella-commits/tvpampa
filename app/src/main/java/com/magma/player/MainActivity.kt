@@ -668,14 +668,16 @@ private fun PaMpATVApp() {
                             password = ""
 
                             status =
-                                "Agregá una lista M3U o conectá tu cuenta"
+                                "No hay listas guardadas. Podés agregar una cuando quieras."
 
+                            // Borrar la lista debe dejar la sección vacía.
+                            // No abrir automáticamente el formulario para agregar otra.
                             prefs.edit()
                                 .clear()
-                                .putBoolean("setup", true)
+                                .putBoolean("setup", false)
                                 .apply()
 
-                            setupOpen = true
+                            setupOpen = false
                         }
                     )
 
