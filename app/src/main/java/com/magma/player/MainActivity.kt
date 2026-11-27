@@ -5,6 +5,7 @@ import com.pampatv.R
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -207,7 +208,18 @@ private fun PaMpATVApp() {
         mutableStateOf(prefs.getString("m3u", "") ?: "")
     }
 
-    var localM3u by remember { mutableStateOf("") }
+    var localM3u by remember {
+        mutableStateOf(
+            runCatching {
+                context.openFileInput("playlist.m3u")
+                    .bufferedReader(Charsets.UTF_8)
+                    .use { it.readText() }
+            }.getOrDefault("")
+        )
+    }
+    var localM3uName by remember {
+        mutableStateOf(prefs.getString("local_m3u_name", "") ?: "")
+    }
 
     var server by remember {
         mutableStateOf(prefs.getString("server", "") ?: "")
@@ -281,19 +293,47 @@ private fun PaMpATVApp() {
         ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
-            m3uUrl = ""
+            val fileName = runCatching {
+                context.contentResolver.query(
+                    uri,
+                    arrayOf(OpenableColumns.DISPLAY_NAME),
+                    null,
+                    null,
+                    null
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        cursor.getString(
+                            cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME)
+                        )
+                    } else null
+                }
+            }.getOrNull().orEmpty().ifBlank { "lista.m3u" }
 
-            localM3u = runCatching {
+            val importedText = runCatching {
                 context.contentResolver.openInputStream(uri)
-                    ?.bufferedReader()
+                    ?.bufferedReader(Charsets.UTF_8)
                     ?.use { it.readText() }
                     .orEmpty()
             }.getOrDefault("")
 
-            status = if (localM3u.isNotBlank()) {
-                "Archivo M3U listo para conectar"
+            if (importedText.isNotBlank()) {
+                runCatching {
+                    context.openFileOutput("playlist.m3u", android.content.Context.MODE_PRIVATE)
+                        .bufferedWriter(Charsets.UTF_8)
+                        .use { it.write(importedText) }
+                }.onSuccess {
+                    localM3u = importedText
+                    localM3uName = fileName
+                    m3uUrl = ""
+                    prefs.edit()
+                        .putString("local_m3u_name", fileName)
+                        .apply()
+                    status = "Archivo '$fileName' guardado. Tocá Conectar."
+                }.onFailure {
+                    status = "No se pudo guardar el archivo: ${it.message.orEmpty()}"
+                }
             } else {
-                "No se pudo leer el archivo"
+                status = "No se pudo leer el archivo M3U"
             }
         }
     }
@@ -303,6 +343,7 @@ private fun PaMpATVApp() {
             .putString("source", source)
             .putString("playlist_name", playlistName.trim())
             .putString("m3u", m3uUrl)
+            .putString("local_m3u_name", localM3uName)
             .putString("server", server)
             .putString("username", username)
             .putString("password", password)
@@ -605,6 +646,8 @@ private fun PaMpATVApp() {
                             playlistName = ""
                             m3uUrl = ""
                             localM3u = ""
+                            localM3uName = ""
+                            context.deleteFile("playlist.m3u")
                             server = ""
                             username = ""
                             password = ""
@@ -967,10 +1010,17 @@ private fun PaMpATVApp() {
 
                         if (source == "M3U") {
                             OutlinedTextField(
-                                m3uUrl,
-                                { m3uUrl = it; localM3u = "" },
+                                value = m3uUrl,
+                                onValueChange = {
+                                    m3uUrl = it
+                                    localM3u = ""
+                                    localM3uName = ""
+                                    context.deleteFile("playlist.m3u")
+                                    prefs.edit().remove("local_m3u_name").apply()
+                                },
                                 label = { Text("URL de lista M3U") },
-                                singleLine = true
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
                             )
 
                             OutlinedButton(
@@ -979,7 +1029,13 @@ private fun PaMpATVApp() {
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Elegir archivo M3U")
+                                Text(
+                                    if (localM3uName.isNotBlank()) {
+                                        "Archivo: $localM3uName (cambiar)"
+                                    } else {
+                                        "Seleccionar archivo M3U"
+                                    }
+                                )
                             }
                         } else {
                             OutlinedTextField(
