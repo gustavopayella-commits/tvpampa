@@ -1,5 +1,10 @@
 
-name: Build Magma APK
+    
+
+
+      - name: Compilar APK
+        run: gradle --no-daemon --refresh-dependencies assembleDebug
+
 
 on:
   workflow_dispatch:
