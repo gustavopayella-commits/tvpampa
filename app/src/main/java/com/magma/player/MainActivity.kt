@@ -37,7 +37,12 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -495,13 +500,52 @@ private fun PlayerDialog(
 
     var fullscreen by remember { mutableStateOf(false) }
     var zoomMode by remember { mutableIntStateOf(0) }
+    var playbackError by remember(entry.url) { mutableStateOf("") }
 
     val player = remember(entry.url) {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(Uri.parse(entry.url)))
-            prepare()
-            playWhenReady = true
-        }
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent("Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0 Mobile Safari/537.36")
+            .setConnectTimeoutMs(20000)
+            .setReadTimeoutMs(30000)
+            .setAllowCrossProtocolRedirects(true)
+
+        val mediaSourceFactory = DefaultMediaSourceFactory(context)
+            .setDataSourceFactory(httpFactory)
+
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .build()
+            .apply {
+                val lowerUrl = entry.url.lowercase()
+                val mimeType = when {
+                    lowerUrl.substringBefore('?').endsWith(".m3u8") -> MimeTypes.APPLICATION_M3U8
+                    lowerUrl.substringBefore('?').endsWith(".mpd") -> MimeTypes.APPLICATION_MPD
+                    else -> null
+                }
+                val itemBuilder = MediaItem.Builder().setUri(Uri.parse(entry.url))
+                if (mimeType != null) itemBuilder.setMimeType(mimeType)
+                setMediaItem(itemBuilder.build())
+
+                addListener(object : Player.Listener {
+                    override fun onPlayerError(error: PlaybackException) {
+                        playbackError = when (error.errorCode) {
+                            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ->
+                                "No se pudo conectar con el servidor."
+                            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
+                                "El servidor rechazó el enlace (HTTP)."
+                            PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ->
+                                "El formato de video no es compatible o el enlace está incompleto."
+                            else -> "Error de reproducción (${error.errorCodeName}). ${error.message.orEmpty()}"
+                        }
+                    }
+
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        if (playbackState == Player.STATE_READY) playbackError = ""
+                    }
+                })
+                prepare()
+                playWhenReady = true
+            }
     }
 
     DisposableEffect(player) {
@@ -613,6 +657,15 @@ private fun PlayerDialog(
                         .background(Color.Black),
                     contentAlignment = Alignment.Center
                 ) {
+                    if (playbackError.isNotBlank()) {
+                        Text(
+                            text = playbackError,
+                            color = Color.White,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(20.dp)
+                        )
+                    }
                     AndroidView(
                         factory = { ctx ->
                             PlayerView(ctx).apply {
@@ -753,8 +806,8 @@ private object M3uParser {
 
 private class XtreamApi(host: String, user: String, pass: String) {
     private val base = host.trimEnd('/')
-    private val u = URLEncoder.encode(user, "UTF-8")
-    private val p = URLEncoder.encode(pass, "UTF-8")
+    private val u = Uri.encode(user)
+    private val p = Uri.encode(pass)
     private fun get(action: String): String {
         val url = "$base/player_api.php?username=$u&password=$p&action=$action"
         return URL(url).openConnection().apply { connectTimeout = 15000; readTimeout = 30000 }.getInputStream().bufferedReader().use { it.readText() }
