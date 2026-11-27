@@ -193,6 +193,9 @@ private fun PaMpATVApp() {
     var source by remember {
         mutableStateOf(prefs.getString("source", "M3U") ?: "M3U")
     }
+    var playlistName by remember {
+        mutableStateOf(prefs.getString("playlist_name", "") ?: "")
+    }
     var section by remember { mutableStateOf("TV") }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
 
@@ -298,6 +301,7 @@ private fun PaMpATVApp() {
     fun saveSettings() {
         prefs.edit()
             .putString("source", source)
+            .putString("playlist_name", playlistName.trim())
             .putString("m3u", m3uUrl)
             .putString("server", server)
             .putString("username", username)
@@ -584,6 +588,7 @@ private fun PaMpATVApp() {
 
                     "Playlists" -> PlaylistPage(
                         source = source,
+                        playlistName = playlistName,
                         status = status,
                         onManage = { setupOpen = true },
                         onRefresh = {
@@ -597,6 +602,7 @@ private fun PaMpATVApp() {
                             favorites = emptySet()
 
                             source = "M3U"
+                            playlistName = ""
                             m3uUrl = ""
                             localM3u = ""
                             server = ""
@@ -933,6 +939,15 @@ private fun PaMpATVApp() {
                     Column(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        OutlinedTextField(
+                            value = playlistName,
+                            onValueChange = { playlistName = it },
+                            label = { Text("Nombre de la lista") },
+                            placeholder = { Text("Ej.: Mi cuenta") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
                         Row(
                             horizontalArrangement =
                                 Arrangement.spacedBy(6.dp)
@@ -1073,6 +1088,7 @@ private fun SettingsPage(
 @Composable
 private fun PlaylistPage(
     source: String,
+    playlistName: String,
     status: String,
     onManage: () -> Unit,
     onRefresh: () -> Unit,
@@ -1125,10 +1141,8 @@ private fun PlaylistPage(
                         .padding(start = 10.dp)
                 ) {
                     Text(
-                        if (source == "M3U") {
-                            "Lista M3U"
-                        } else {
-                            "Cuenta Smarters"
+                        playlistName.ifBlank {
+                            if (source == "M3U") "Lista M3U" else "Cuenta Smarters"
                         },
                         fontWeight = FontWeight.Bold,
                         color = PampaInk
