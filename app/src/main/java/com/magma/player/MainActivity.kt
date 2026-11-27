@@ -7,6 +7,7 @@ import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.os.Bundle
+import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -1494,8 +1495,14 @@ private fun PlayerDialog(
             .setUserAgent(
                 "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0 Mobile Safari/537.36"
             )
-            .setConnectTimeoutMs(20000)
-            .setReadTimeoutMs(30000)
+            .setDefaultRequestProperties(
+                mapOf(
+                    "Accept" to "*/*",
+                    "Connection" to "keep-alive"
+                )
+            )
+            .setConnectTimeoutMs(30000)
+            .setReadTimeoutMs(60000)
             .setAllowCrossProtocolRedirects(true)
 
         val mediaSourceFactory =
@@ -1572,22 +1579,33 @@ private fun PlayerDialog(
         }
     }
 
+    // En pantalla completa: orientación horizontal y barras del sistema ocultas.
+    // Al salir o cerrar el reproductor se restauran los valores anteriores.
     DisposableEffect(fullscreen) {
-        val previousOrientation =
-            activity?.requestedOrientation
+        val window = activity?.window
+        val decorView = window?.decorView
+        val previousOrientation = activity?.requestedOrientation
+        val previousSystemUi = decorView?.systemUiVisibility ?: 0
 
         if (fullscreen) {
             activity?.requestedOrientation =
                 ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        } else {
-            activity?.requestedOrientation =
-                ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            decorView?.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                )
         }
 
         onDispose {
+            if (decorView != null) {
+                decorView.systemUiVisibility = previousSystemUi
+            }
             if (previousOrientation != null) {
-                activity?.requestedOrientation =
-                    previousOrientation
+                activity?.requestedOrientation = previousOrientation
             }
         }
     }
