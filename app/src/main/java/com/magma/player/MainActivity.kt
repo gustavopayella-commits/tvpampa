@@ -11,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -25,8 +26,20 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -34,7 +47,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -109,13 +121,63 @@ private object MediaEntryStorage {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { MagmaApp() }
+        setContent { PaMpATVRoot() }
+    }
+}
+
+
+@Composable
+private fun PaMpATVRoot() {
+    var splashVisible by remember { mutableStateOf(true) }
+    val transition = rememberInfiniteTransition(label = "pampatv_splash")
+    val logoScale by transition.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.04f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 650),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "logo_scale"
+    )
+
+    LaunchedEffect(Unit) {
+        delay(1900)
+        splashVisible = false
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        PaMpATVApp()
+        AnimatedVisibility(
+            visible = splashVisible,
+            enter = fadeIn(animationSpec = tween(250)),
+            exit = fadeOut(animationSpec = tween(450))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFF06212A)),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.pampatv_logo),
+                    contentDescription = "PaMpATV",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxWidth(0.82f)
+                        .aspectRatio(1f)
+                        .graphicsLayer {
+                            scaleX = logoScale
+                            scaleY = logoScale
+                        }
+                )
+            }
+        }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MagmaApp() {
+private fun PaMpATVApp() {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("magma_settings", 0) }
     val scope = rememberCoroutineScope()
@@ -208,7 +270,7 @@ fun MagmaApp() {
                     Box(Modifier.fillMaxWidth().height(150.dp).background(MagmaRed), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("🔥", fontSize = 43.sp)
-                            Text("Magma", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                            Text("PaMpATV", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                     listOf("TV", "Películas", "Series", "Playlists", "Ajustes", "Emparejar TV", "Premium", "Telegram").forEach { item ->
@@ -221,14 +283,14 @@ fun MagmaApp() {
                         )
                     }
                     Spacer(Modifier.weight(1f))
-                    Text("Magma · Android", Modifier.padding(18.dp), color = Color.Gray, fontSize = 11.sp)
+                    Text("PaMpATV · Android", Modifier.padding(18.dp), color = Color.Gray, fontSize = 11.sp)
                 }
             }
         ) {
             Column(Modifier.fillMaxSize().background(MagmaBg)) {
                 Row(Modifier.fillMaxWidth().background(MagmaRed).padding(horizontal = 8.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Default.Menu, null, tint = Color.White) }
-                    Text("🔥 Magma", Modifier.weight(1f), color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                    Text("PaMpATV", Modifier.weight(1f), color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
                     IconButton(onClick = { showFavorites = !showFavorites; section = "TV" }) { Icon(Icons.Default.Favorite, null, tint = if (showFavorites) MagmaGold else Color.White) }
                     IconButton(onClick = { setupOpen = true }) { Icon(Icons.Default.Add, null, tint = Color.White) }
                 }
@@ -317,7 +379,7 @@ fun MagmaApp() {
                         }
                     }
                 }
-                Row(Modifier.fillMaxWidth().background(MagmaGold).padding(7.dp), horizontalArrangement = Arrangement.Center) { Text("MAGMA IPTV", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White) }
+                Row(Modifier.fillMaxWidth().background(MagmaGold).padding(7.dp), horizontalArrangement = Arrangement.Center) { Text("PaMpATV", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White) }
             }
         }
 
@@ -456,7 +518,7 @@ private fun PairPage(code: String, onCode: (String) -> Unit) {
                 Text("1. Abrí la aplicación en el televisor.\n2. Entrá a la pantalla para agregar playlist.\n3. Ubicá el código en el televisor.\n4. Ingresá el código en este dispositivo.", color = Color.White, fontSize = 12.sp)
             }
         }
-        Text("La vinculación real necesita el servicio oficial de emparejamiento de Magma; esta pantalla replica el flujo visual.", color = Color.Gray, fontSize = 11.sp)
+        Text("La vinculación real necesita el servicio oficial de emparejamiento de PaMpATV; esta pantalla replica el flujo visual.", color = Color.Gray, fontSize = 11.sp)
     }
 }
 
