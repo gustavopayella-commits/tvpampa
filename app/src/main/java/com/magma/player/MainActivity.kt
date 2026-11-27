@@ -1,0 +1,414 @@
+package com.magma.player
+
+import android.net.Uri
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import java.net.URL
+import java.net.URLEncoder
+
+private val MagmaRed = Color(0xFF9E4350)
+private val MagmaGold = Color(0xFFE5A63B)
+private val MagmaBg = Color(0xFFF7F5F8)
+private val MagmaInk = Color(0xFF17313A)
+private val MagmaNavy = Color(0xFF06212A)
+
+data class MediaEntry(
+    val id: String,
+    val name: String,
+    val url: String,
+    val category: String = "",
+    val logo: String = "",
+    val kind: String = "live",
+    val seriesId: String = ""
+)
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent { MagmaApp() }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MagmaApp() {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("magma_settings", 0) }
+    val scope = rememberCoroutineScope()
+    var source by remember { mutableStateOf(prefs.getString("source", "M3U") ?: "M3U") }
+    var section by remember { mutableStateOf("TV") }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    var setupOpen by remember { mutableStateOf(prefs.getBoolean("setup", true)) }
+    var m3uUrl by remember { mutableStateOf(prefs.getString("m3u", "") ?: "") }
+    var localM3u by remember { mutableStateOf("") }
+    var server by remember { mutableStateOf(prefs.getString("server", "") ?: "") }
+    var username by remember { mutableStateOf(prefs.getString("username", "") ?: "") }
+    var password by remember { mutableStateOf(prefs.getString("password", "") ?: "") }
+    var status by remember { mutableStateOf("Agregá una lista M3U o conectá tu cuenta") }
+    var search by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var live by remember { mutableStateOf(listOf<MediaEntry>()) }
+    var movies by remember { mutableStateOf(listOf<MediaEntry>()) }
+    var series by remember { mutableStateOf(listOf<MediaEntry>()) }
+    var categories by remember { mutableStateOf(listOf<String>()) }
+    var category by remember { mutableStateOf("Todos") }
+    var selected by remember { mutableStateOf<MediaEntry?>(null) }
+    var favorites by remember { mutableStateOf(prefs.getStringSet("favorites", emptySet())?.toSet() ?: emptySet()) }
+    var showFavorites by remember { mutableStateOf(false) }
+    var pairingCode by remember { mutableStateOf("") }
+
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            localM3u = runCatching {
+                context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
+            }.getOrDefault("")
+            status = if (localM3u.isNotBlank()) "Archivo M3U listo para conectar" else "No se pudo leer el archivo"
+        }
+    }
+
+    fun saveSettings() {
+        prefs.edit().putString("source", source).putString("m3u", m3uUrl)
+            .putString("server", server).putString("username", username)
+            .putString("password", password).putBoolean("setup", false).apply()
+        setupOpen = false
+    }
+
+    suspend fun loadAll() {
+        busy = true
+        status = "Conectando y cargando contenido..."
+        try {
+            val loaded = withContext(Dispatchers.IO) {
+                if (source == "M3U") {
+                    require(localM3u.isNotBlank() || m3uUrl.isNotBlank()) { "Ingresá una URL o elegí un archivo M3U" }
+                    val text = if (localM3u.isNotBlank()) localM3u else M3uParser.download(m3uUrl)
+                    Triple(M3uParser.parseText(text), emptyList(), emptyList())
+                } else {
+                    require(server.isNotBlank() && username.isNotBlank() && password.isNotBlank()) { "Completá servidor, usuario y contraseña" }
+                    val api = XtreamApi(server, username, password)
+                    Triple(api.live(), api.vod(), api.series())
+                }
+            }
+            live = loaded.first
+            movies = loaded.second
+            series = loaded.third
+            categories = (live + movies + series).map { it.category }.filter { it.isNotBlank() }.distinct().sorted()
+            status = "Conectado: ${live.size} canales · ${movies.size} películas · ${series.size} series"
+            saveSettings()
+        } catch (e: Exception) {
+            status = "No se pudo conectar: ${e.message ?: "revisá los datos"}"
+        } finally { busy = false }
+    }
+
+    MaterialTheme(colorScheme = lightColorScheme(primary = MagmaRed, secondary = MagmaGold, background = MagmaBg)) {
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            drawerContent = {
+                ModalDrawerSheet(drawerContainerColor = Color(0xFFFFF9FC)) {
+                    Box(Modifier.fillMaxWidth().height(150.dp).background(MagmaRed), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("🔥", fontSize = 43.sp)
+                            Text("Magma", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    listOf("TV", "Películas", "Series", "Playlists", "Ajustes", "Emparejar TV", "Premium", "Telegram").forEach { item ->
+                        NavigationDrawerItem(
+                            label = { Text(item) },
+                            selected = section == item,
+                            onClick = { section = item; scope.launch { drawerState.close() }; showFavorites = false; category = "Todos" },
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 2.dp),
+                            icon = { Icon(when (item) { "TV" -> Icons.Default.Tv; "Películas" -> Icons.Default.Movie; "Series" -> Icons.Default.LiveTv; "Playlists" -> Icons.Default.PlaylistPlay; "Ajustes" -> Icons.Default.Settings; "Emparejar TV" -> Icons.Default.Cast; "Premium" -> Icons.Default.Star; else -> Icons.Default.Send }, null) }
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Text("Magma · Android", Modifier.padding(18.dp), color = Color.Gray, fontSize = 11.sp)
+                }
+            }
+        ) {
+            Column(Modifier.fillMaxSize().background(MagmaBg)) {
+                Row(Modifier.fillMaxWidth().background(MagmaRed).padding(horizontal = 8.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Default.Menu, null, tint = Color.White) }
+                    Text("🔥 Magma", Modifier.weight(1f), color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                    IconButton(onClick = { showFavorites = !showFavorites; section = "TV" }) { Icon(Icons.Default.Favorite, null, tint = if (showFavorites) MagmaGold else Color.White) }
+                    IconButton(onClick = { setupOpen = true }) { Icon(Icons.Default.Add, null, tint = Color.White) }
+                }
+                if (section in listOf("TV", "Películas", "Series")) {
+                    LazyRow(Modifier.fillMaxWidth().background(Color.White), horizontalArrangement = Arrangement.SpaceEvenly, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                        items(listOf("TV", "Películas", "Series", "Playlists")) { tab ->
+                            TextButton(onClick = { section = tab; showFavorites = false; category = "Todos" }) {
+                                Text(tab, color = if (section == tab) MagmaRed else MagmaInk, fontWeight = if (section == tab) FontWeight.Bold else FontWeight.Normal)
+                            }
+                        }
+                    }
+                }
+                when (section) {
+                    "Ajustes" -> SettingsPage(status, source, { setupOpen = true }, { scope.launch { loadAll() } })
+                    "Emparejar TV" -> PairPage(pairingCode, { pairingCode = it })
+                    "Premium" -> InfoPage("Premium", "La activación Premium depende del proveedor oficial de la aplicación. Esta reconstrucción no puede validar compras ni licencias del servicio original.")
+                    "Telegram" -> InfoPage("Telegram", "Configurá aquí el enlace de soporte de tu proveedor cuando dispongas de él.")
+                    "Playlists" -> PlaylistPage(source, status, { setupOpen = true }, { scope.launch { loadAll() } })
+                    else -> {
+                        OutlinedTextField(value = search, onValueChange = { search = it }, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), placeholder = { Text("Buscar ${section.lowercase()}...") }, leadingIcon = { Icon(Icons.Default.Search, null) }, singleLine = true, shape = RoundedCornerShape(13.dp))
+                        val sourceItems = when (section) { "Películas" -> movies; "Series" -> series; else -> live }
+                        val filtered = sourceItems.filter { (it.name.contains(search, true) || it.category.contains(search, true)) && (category == "Todos" || it.category == category) && (!showFavorites || favorites.contains(it.id)) }
+                        LazyRow(Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                            item { FilterChip(selected = category == "Todos", onClick = { category = "Todos" }, label = { Text("Todos") }) }
+                            items(categories) { c -> FilterChip(selected = category == c, onClick = { category = c }, label = { Text(c) }) }
+                        }
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(if (showFavorites) "Favoritos" else "${filtered.size} elementos", color = MagmaInk, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            Text(status, color = MagmaRed, fontSize = 10.sp, maxLines = 1)
+                        }
+                        if (filtered.isEmpty()) {
+                            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(Icons.Default.LiveTv, null, tint = MagmaRed, modifier = Modifier.size(48.dp))
+                                    Text("Todavía no hay contenido", color = MagmaInk, fontWeight = FontWeight.SemiBold)
+                                    Text("Agregá una lista M3U o una cuenta Smarters", color = Color.Gray, fontSize = 12.sp)
+                                    Button(onClick = { setupOpen = true }, modifier = Modifier.padding(top = 10.dp)) { Text("Agregar lista") }
+                                }
+                            }
+                        } else {
+                            LazyVerticalGrid(columns = GridCells.Adaptive(105.dp), modifier = Modifier.weight(1f), contentPadding = PaddingValues(9.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(filtered, key = { it.id }) { entry ->
+                                    Card(Modifier.fillMaxWidth().clickable { selected = entry }, shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                                        Column(Modifier.padding(9.dp).height(112.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                            Box(Modifier.size(48.dp).background(Color(0xFFFFF0E5), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+                                                if (entry.logo.startsWith("http", true)) {
+                                                    AsyncImage(model = entry.logo, contentDescription = entry.name, modifier = Modifier.fillMaxSize().padding(3.dp), contentScale = ContentScale.Fit)
+                                                } else {
+                                                    Text(if (entry.kind == "live") "▶" else if (entry.kind == "series") "▣" else "🎬", fontSize = 23.sp, color = MagmaRed)
+                                                }
+                                            }
+                                            Spacer(Modifier.height(6.dp))
+                                            Text(entry.name, maxLines = 2, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MagmaInk)
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(entry.category.ifBlank { section }, fontSize = 9.sp, color = MagmaRed, modifier = Modifier.weight(1f), maxLines = 1)
+                                                IconButton(onClick = {
+                                                    favorites = if (favorites.contains(entry.id)) favorites - entry.id else favorites + entry.id
+                                                    prefs.edit().putStringSet("favorites", favorites).apply()
+                                                }, modifier = Modifier.size(26.dp)) { Icon(Icons.Default.Favorite, null, tint = if (favorites.contains(entry.id)) MagmaRed else Color.LightGray, modifier = Modifier.size(16.dp)) }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth().background(MagmaGold).padding(7.dp), horizontalArrangement = Arrangement.Center) { Text("MAGMA IPTV", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White) }
+            }
+        }
+
+        selected?.let { entry ->
+            if (entry.kind == "series") SeriesEpisodesDialog(entry, server, username, password, onPlay = { selected = it }, onClose = { selected = null })
+            else PlayerDialog(entry) { selected = null }
+        }
+
+        if (setupOpen) {
+            AlertDialog(
+                onDismissRequest = { setupOpen = false },
+                title = { Text("Agregar playlist") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilterChip(selected = source == "M3U", onClick = { source = "M3U" }, label = { Text("M3U / M3U8") })
+                            FilterChip(selected = source == "Smarters", onClick = { source = "Smarters" }, label = { Text("Smarters") })
+                        }
+                        if (source == "M3U") {
+                            OutlinedTextField(m3uUrl, { m3uUrl = it }, label = { Text("URL de lista M3U") }, singleLine = true)
+                            OutlinedButton(onClick = { filePicker.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Elegir archivo M3U") }
+                        } else {
+                            OutlinedTextField(server, { server = it }, label = { Text("Servidor / URL") }, singleLine = true)
+                            OutlinedTextField(username, { username = it }, label = { Text("Usuario") }, singleLine = true)
+                            OutlinedTextField(password, { password = it }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
+                        }
+                        Text(status, fontSize = 11.sp, color = MagmaRed)
+                    }
+                },
+                confirmButton = { Button(onClick = { scope.launch { loadAll() } }, enabled = !busy) { if (busy) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp) else Text("Conectar") } },
+                dismissButton = { TextButton(onClick = { setupOpen = false }) { Text("Cancelar") } }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsPage(status: String, source: String, onEdit: () -> Unit, onRefresh: () -> Unit) {
+    Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Ajustes", fontSize = 23.sp, fontWeight = FontWeight.Bold, color = MagmaInk)
+        Text("Fuente actual: $source", color = MagmaInk)
+        Text(status, color = MagmaRed, fontSize = 12.sp)
+        Button(onClick = onEdit, modifier = Modifier.fillMaxWidth()) { Text("Editar conexión") }
+        OutlinedButton(onClick = onRefresh, modifier = Modifier.fillMaxWidth()) { Text("Actualizar contenido") }
+        Text("La reproducción depende de que tu proveedor permita el acceso y entregue enlaces compatibles.", color = Color.Gray, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun PlaylistPage(source: String, status: String, onManage: () -> Unit, onRefresh: () -> Unit) {
+    Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) { Text("Playlists", fontSize = 23.sp, fontWeight = FontWeight.Bold, color = MagmaInk, modifier = Modifier.weight(1f)); Button(onClick = onManage) { Text("+ Añadir lista") } }
+        Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+            Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.PlaylistPlay, null, tint = MagmaRed, modifier = Modifier.size(34.dp))
+                Column(Modifier.weight(1f).padding(start = 10.dp)) { Text(if (source == "M3U") "Lista M3U" else "Cuenta Smarters", fontWeight = FontWeight.Bold, color = MagmaInk); Text(status, color = Color.Gray, fontSize = 11.sp) }
+                Icon(Icons.Default.MoreVert, null, tint = MagmaInk)
+            }
+        }
+        OutlinedButton(onClick = onRefresh, modifier = Modifier.fillMaxWidth()) { Text("Actualizar lista") }
+    }
+}
+
+@Composable
+private fun PairPage(code: String, onCode: (String) -> Unit) {
+    Column(Modifier.fillMaxSize().padding(22.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
+        Text("Emparejar TV", fontSize = 23.sp, fontWeight = FontWeight.Bold, color = MagmaInk)
+        Text("Ingresá el código que se muestra en el televisor.", color = MagmaInk)
+        OutlinedTextField(code, onCode, modifier = Modifier.fillMaxWidth(), label = { Text("Código de TV") }, singleLine = true)
+        Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) { Text("Añadir TV") }
+        Card(colors = CardDefaults.cardColors(containerColor = MagmaNavy)) {
+            Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("AYUDA", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("1. Abrí la aplicación en el televisor.\n2. Entrá a la pantalla para agregar playlist.\n3. Ubicá el código en el televisor.\n4. Ingresá el código en este dispositivo.", color = Color.White, fontSize = 12.sp)
+            }
+        }
+        Text("La vinculación real necesita el servicio oficial de emparejamiento de Magma; esta pantalla replica el flujo visual.", color = Color.Gray, fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun InfoPage(title: String, message: String) {
+    Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { Text(title, fontSize = 23.sp, fontWeight = FontWeight.Bold, color = MagmaInk); Text(message, color = MagmaInk) }
+}
+
+@Composable
+private fun SeriesEpisodesDialog(entry: MediaEntry, server: String, user: String, pass: String, onPlay: (MediaEntry) -> Unit, onClose: () -> Unit) {
+    var episodes by remember(entry.id) { mutableStateOf<List<MediaEntry>>(emptyList()) }
+    var loading by remember(entry.id) { mutableStateOf(true) }
+    var error by remember(entry.id) { mutableStateOf("") }
+    LaunchedEffect(entry.id) {
+        try { episodes = withContext(Dispatchers.IO) { XtreamApi(server, user, pass).episodes(entry.seriesId, entry.name) } }
+        catch (e: Exception) { error = e.message ?: "No se pudieron cargar los episodios" }
+        loading = false
+    }
+    AlertDialog(onDismissRequest = onClose, title = { Text(entry.name) }, text = {
+        when {
+            loading -> CircularProgressIndicator()
+            error.isNotBlank() -> Text(error)
+            episodes.isEmpty() -> Text("No se encontraron episodios para esta serie.")
+            else -> LazyColumn(Modifier.heightIn(max = 380.dp)) {
+                items(episodes.size) { index ->
+                    val ep = episodes[index]
+                    ListItem(headlineContent = { Text(ep.name) }, supportingContent = { Text(ep.category) }, leadingContent = { Icon(Icons.Default.PlayCircle, null, tint = MagmaRed) }, modifier = Modifier.clickable { onPlay(ep) })
+                }
+            }
+        }
+    }, confirmButton = { TextButton(onClick = onClose) { Text("Cerrar") } })
+}
+
+@Composable
+private fun PlayerDialog(entry: MediaEntry, onClose: () -> Unit) {
+    val context = LocalContext.current
+    val player = remember(entry.url) { ExoPlayer.Builder(context).build().apply { setMediaItem(MediaItem.fromUri(Uri.parse(entry.url))); prepare(); playWhenReady = true } }
+    DisposableEffect(player) { onDispose { player.release() } }
+    AlertDialog(onDismissRequest = onClose, title = { Text(entry.name) }, text = {
+        AndroidView(factory = { ctx -> PlayerView(ctx).apply { this.player = player; useController = true } }, modifier = Modifier.fillMaxWidth().height(220.dp))
+    }, confirmButton = { TextButton(onClick = onClose) { Text("Cerrar") } })
+}
+
+private object M3uParser {
+    fun download(address: String): String {
+        require(address.startsWith("http://") || address.startsWith("https://")) { "Ingresá una URL M3U válida" }
+        return URL(address).openConnection().apply { connectTimeout = 15000; readTimeout = 30000 }.getInputStream().bufferedReader().use { it.readText() }
+    }
+    fun parseText(text: String): List<MediaEntry> {
+        val out = mutableListOf<MediaEntry>()
+        var name = "Canal"; var logo = ""; var group = "TV"; var id = 0
+        text.lineSequence().forEach { raw ->
+            val line = raw.trim()
+            if (line.startsWith("#EXTINF", true)) {
+                name = line.substringAfterLast(',', "Canal").trim().ifBlank { "Canal" }
+                logo = Regex("tvg-logo=\"([^\"]*)\"").find(line)?.groupValues?.get(1).orEmpty()
+                group = Regex("group-title=\"([^\"]*)\"").find(line)?.groupValues?.get(1) ?: "TV"
+            } else if (line.isNotBlank() && !line.startsWith("#") && (line.startsWith("http", true) || line.startsWith("rtmp", true))) {
+                out.add(MediaEntry("m3u-${id++}", name, line, group, logo, "live")); name = "Canal"; logo = ""; group = "TV"
+            }
+        }
+        return out
+    }
+}
+
+private class XtreamApi(host: String, user: String, pass: String) {
+    private val base = host.trimEnd('/')
+    private val u = URLEncoder.encode(user, "UTF-8")
+    private val p = URLEncoder.encode(pass, "UTF-8")
+    private fun get(action: String): String {
+        val url = "$base/player_api.php?username=$u&password=$p&action=$action"
+        return URL(url).openConnection().apply { connectTimeout = 15000; readTimeout = 30000 }.getInputStream().bufferedReader().use { it.readText() }
+    }
+    private fun array(action: String) = JSONArray(get(action))
+    private fun categories(action: String): Map<String, String> {
+        val a = array(action); return (0 until a.length()).associate { i -> val o = a.getJSONObject(i); o.optString("category_id") to o.optString("category_name") }
+    }
+    fun live(): List<MediaEntry> {
+        val cats = categories("get_live_categories"); val a = array("get_live_streams")
+        return (0 until a.length()).map { i -> val o = a.getJSONObject(i); val id = o.optString("stream_id"); MediaEntry("live-$id", o.optString("name", "Canal"), "$base/live/$u/$p/$id.${o.optString("container_extension", "ts")}", cats[o.optString("category_id")].orEmpty(), o.optString("stream_icon"), "live") }
+    }
+    fun vod(): List<MediaEntry> {
+        val cats = categories("get_vod_categories"); val a = array("get_vod_streams")
+        return (0 until a.length()).map { i -> val o = a.getJSONObject(i); val id = o.optString("stream_id"); MediaEntry("vod-$id", o.optString("name", "Película"), "$base/movie/$u/$p/$id.${o.optString("container_extension", "mp4")}", cats[o.optString("category_id")].orEmpty(), o.optString("stream_icon"), "vod") }
+    }
+    fun series(): List<MediaEntry> {
+        val cats = categories("get_series_categories"); val a = array("get_series")
+        return (0 until a.length()).map { i -> val o = a.getJSONObject(i); val id = o.optString("series_id"); MediaEntry("series-$id", o.optString("name", "Serie"), "", cats[o.optString("category_id")].orEmpty(), o.optString("cover"), "series", id) }
+    }
+    fun episodes(seriesId: String, title: String): List<MediaEntry> {
+        val root = JSONObject(get("get_series_info&series_id=${URLEncoder.encode(seriesId, "UTF-8")}"))
+        val all = root.optJSONObject("episodes") ?: return emptyList()
+        val out = mutableListOf<MediaEntry>(); val keys = all.keys()
+        while (keys.hasNext()) {
+            val season = keys.next(); val arr = all.optJSONArray(season) ?: continue
+            for (i in 0 until arr.length()) {
+                val ep = arr.getJSONObject(i); val id = ep.optString("id"); val ext = ep.optString("container_extension", "mp4").ifBlank { "mp4" }
+                out.add(MediaEntry("episode-$id", "T$season · ${ep.optString("title", "Episodio")}", "$base/series/$u/$p/$id.$ext", title, "", "episode"))
+            }
+        }
+        return out
+    }
+}
