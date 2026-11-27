@@ -64,13 +64,14 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URL
+import java.net.HttpURLConnection
 import java.net.URLEncoder
 
-private val MagmaRed = Color(0xFF9E4350)
-private val MagmaGold = Color(0xFFE5A63B)
-private val MagmaBg = Color(0xFFF7F5F8)
-private val MagmaInk = Color(0xFF17313A)
-private val MagmaNavy = Color(0xFF06212A)
+private val PampaRed = Color(0xFF9E4350)
+private val PampaGold = Color(0xFFE5A63B)
+private val PampaBg = Color(0xFFF7F5F8)
+private val PampaInk = Color(0xFF17313A)
+private val PampaNavy = Color(0xFF06212A)
 
 data class MediaEntry(
     val id: String,
@@ -380,9 +381,9 @@ private fun PaMpATVApp() {
 
     MaterialTheme(
         colorScheme = lightColorScheme(
-            primary = MagmaRed,
-            secondary = MagmaGold,
-            background = MagmaBg
+            primary = PampaRed,
+            secondary = PampaGold,
+            background = PampaBg
         )
     ) {
         ModalNavigationDrawer(
@@ -395,7 +396,7 @@ private fun PaMpATVApp() {
                         Modifier
                             .fillMaxWidth()
                             .height(150.dp)
-                            .background(MagmaRed),
+                            .background(PampaRed),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(
@@ -467,12 +468,12 @@ private fun PaMpATVApp() {
             Column(
                 Modifier
                     .fillMaxSize()
-                    .background(MagmaBg)
+                    .background(PampaBg)
             ) {
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .background(MagmaRed)
+                        .background(PampaRed)
                         .padding(horizontal = 8.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -506,7 +507,7 @@ private fun PaMpATVApp() {
                             Icons.Default.Favorite,
                             null,
                             tint = if (showFavorites) {
-                                MagmaGold
+                                PampaGold
                             } else {
                                 Color.White
                             }
@@ -543,9 +544,9 @@ private fun PaMpATVApp() {
                                 Text(
                                     tab,
                                     color = if (section == tab) {
-                                        MagmaRed
+                                        PampaRed
                                     } else {
-                                        MagmaInk
+                                        PampaInk
                                     },
                                     fontWeight = if (section == tab) {
                                         FontWeight.Bold
@@ -692,14 +693,14 @@ private fun PaMpATVApp() {
                                 } else {
                                     "${filtered.size} elementos"
                                 },
-                                color = MagmaInk,
+                                color = PampaInk,
                                 fontSize = 12.sp,
                                 modifier = Modifier.weight(1f)
                             )
 
                             Text(
                                 status,
-                                color = MagmaRed,
+                                color = PampaRed,
                                 fontSize = 10.sp,
                                 maxLines = 1
                             )
@@ -719,13 +720,13 @@ private fun PaMpATVApp() {
                                     Icon(
                                         Icons.Default.LiveTv,
                                         null,
-                                        tint = MagmaRed,
+                                        tint = PampaRed,
                                         modifier = Modifier.size(48.dp)
                                     )
 
                                     Text(
                                         "Todavía no hay contenido",
-                                        color = MagmaInk,
+                                        color = PampaInk,
                                         fontWeight = FontWeight.SemiBold
                                     )
 
@@ -812,7 +813,7 @@ private fun PaMpATVApp() {
                                                             "🎬"
                                                         },
                                                         fontSize = 23.sp,
-                                                        color = MagmaRed
+                                                        color = PampaRed
                                                     )
                                                 }
                                             }
@@ -824,7 +825,7 @@ private fun PaMpATVApp() {
                                                 maxLines = 2,
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.SemiBold,
-                                                color = MagmaInk
+                                                color = PampaInk
                                             )
 
                                             Row(
@@ -836,7 +837,7 @@ private fun PaMpATVApp() {
                                                         section
                                                     },
                                                     fontSize = 9.sp,
-                                                    color = MagmaRed,
+                                                    color = PampaRed,
                                                     modifier = Modifier.weight(1f),
                                                     maxLines = 1
                                                 )
@@ -873,7 +874,7 @@ private fun PaMpATVApp() {
                                                                 entry.id
                                                             )
                                                         ) {
-                                                            MagmaRed
+                                                            PampaRed
                                                         } else {
                                                             Color.LightGray
                                                         },
@@ -893,7 +894,7 @@ private fun PaMpATVApp() {
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .background(MagmaGold)
+                        .background(PampaGold)
                         .padding(7.dp),
                     horizontalArrangement = Arrangement.Center
                 ) {
@@ -993,7 +994,7 @@ private fun PaMpATVApp() {
                         Text(
                             status,
                             fontSize = 11.sp,
-                            color = MagmaRed
+                            color = PampaRed
                         )
                     }
                 },
@@ -1041,11 +1042,11 @@ private fun SettingsPage(
             "Ajustes",
             fontSize = 23.sp,
             fontWeight = FontWeight.Bold,
-            color = MagmaInk
+            color = PampaInk
         )
 
-        Text("Fuente actual: $source", color = MagmaInk)
-        Text(status, color = MagmaRed, fontSize = 12.sp)
+        Text("Fuente actual: $source", color = PampaInk)
+        Text(status, color = PampaRed, fontSize = 12.sp)
 
         Button(
             onClick = onEdit,
@@ -1091,7 +1092,7 @@ private fun PlaylistPage(
                 "Playlists",
                 fontSize = 23.sp,
                 fontWeight = FontWeight.Bold,
-                color = MagmaInk,
+                color = PampaInk,
                 modifier = Modifier.weight(1f)
             )
 
@@ -1114,7 +1115,7 @@ private fun PlaylistPage(
                 Icon(
                     Icons.Default.PlaylistPlay,
                     null,
-                    tint = MagmaRed,
+                    tint = PampaRed,
                     modifier = Modifier.size(34.dp)
                 )
 
@@ -1130,7 +1131,7 @@ private fun PlaylistPage(
                             "Cuenta Smarters"
                         },
                         fontWeight = FontWeight.Bold,
-                        color = MagmaInk
+                        color = PampaInk
                     )
 
                     Text(
@@ -1147,7 +1148,7 @@ private fun PlaylistPage(
                         Icon(
                             Icons.Default.MoreVert,
                             contentDescription = "Opciones de lista",
-                            tint = MagmaInk
+                            tint = PampaInk
                         )
                     }
 
@@ -1172,7 +1173,7 @@ private fun PlaylistPage(
                                 Icon(
                                     Icons.Default.Delete,
                                     null,
-                                    tint = MagmaRed
+                                    tint = PampaRed
                                 )
                             },
                             onClick = {
@@ -1209,7 +1210,7 @@ private fun PlaylistPage(
                         onDelete()
                     }
                 ) {
-                    Text("Borrar", color = MagmaRed)
+                    Text("Borrar", color = PampaRed)
                 }
             },
             dismissButton = {
@@ -1238,12 +1239,12 @@ private fun PairPage(
             "Emparejar TV",
             fontSize = 23.sp,
             fontWeight = FontWeight.Bold,
-            color = MagmaInk
+            color = PampaInk
         )
 
         Text(
             "Ingresá el código que se muestra en el televisor.",
-            color = MagmaInk
+            color = PampaInk
         )
 
         OutlinedTextField(
@@ -1264,7 +1265,7 @@ private fun PairPage(
 
         Card(
             colors = CardDefaults.cardColors(
-                containerColor = MagmaNavy
+                containerColor = PampaNavy
             )
         ) {
             Column(
@@ -1311,10 +1312,10 @@ private fun InfoPage(
             title,
             fontSize = 23.sp,
             fontWeight = FontWeight.Bold,
-            color = MagmaInk
+            color = PampaInk
         )
 
-        Text(message, color = MagmaInk)
+        Text(message, color = PampaInk)
     }
 }
 
@@ -1384,7 +1385,7 @@ private fun SeriesEpisodesDialog(
                                     Icon(
                                         Icons.Default.PlayCircle,
                                         null,
-                                        tint = MagmaRed
+                                        tint = PampaRed
                                     )
                                 },
                                 modifier = Modifier.clickable {
@@ -1729,6 +1730,40 @@ private fun PlayerDialog(
     }
 }
 
+private fun downloadHttpText(address: String): String {
+    val connection = URL(address).openConnection() as HttpURLConnection
+    try {
+        connection.requestMethod = "GET"
+        connection.connectTimeout = 20000
+        connection.readTimeout = 30000
+        connection.instanceFollowRedirects = true
+        connection.setRequestProperty(
+            "User-Agent",
+            "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0 Mobile Safari/537.36"
+        )
+        connection.setRequestProperty("Accept", "*/*")
+
+        val code = connection.responseCode
+        if (code !in 200..299) {
+            val detail = connection.errorStream
+                ?.bufferedReader(Charsets.UTF_8)
+                ?.use { it.readText() }
+                ?.take(300)
+                .orEmpty()
+            throw IllegalStateException(
+                if (detail.isBlank()) "El servidor respondió HTTP $code"
+                else "HTTP $code: $detail"
+            )
+        }
+
+        return connection.inputStream
+            .bufferedReader(Charsets.UTF_8)
+            .use { it.readText() }
+    } finally {
+        connection.disconnect()
+    }
+}
+
 private object M3uParser {
 
     fun download(address: String): String {
@@ -1739,12 +1774,7 @@ private object M3uParser {
             "Ingresá una URL M3U válida"
         }
 
-        return URL(address).openConnection().apply {
-            connectTimeout = 15000
-            readTimeout = 30000
-        }.getInputStream()
-            .bufferedReader()
-            .use { it.readText() }
+        return downloadHttpText(address)
     }
 
     fun parseText(text: String): List<MediaEntry> {
@@ -1809,20 +1839,31 @@ private class XtreamApi(
     user: String,
     pass: String
 ) {
-    private val base = host.trimEnd('/')
+    private val base = host.trim().trimEnd('/').let {
+        when {
+            it.startsWith("http://", true) ||
+                it.startsWith("https://", true) -> it
+            else -> "http://$it"
+        }
+    }
     private val u = Uri.encode(user)
     private val p = Uri.encode(pass)
+
+    init {
+        val parsed = Uri.parse(base)
+        require(
+            (parsed.scheme == "http" || parsed.scheme == "https") &&
+                !parsed.host.isNullOrBlank()
+        ) {
+            "El servidor debe ser una dirección HTTP o HTTPS válida"
+        }
+    }
 
     private fun get(action: String): String {
         val url =
             "$base/player_api.php?username=$u&password=$p&action=$action"
 
-        return URL(url).openConnection().apply {
-            connectTimeout = 15000
-            readTimeout = 30000
-        }.getInputStream()
-            .bufferedReader()
-            .use { it.readText() }
+        return downloadHttpText(url)
     }
 
     private fun array(action: String) =
