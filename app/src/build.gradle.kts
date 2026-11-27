@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.magma.player"
+    namespace = "com.pampatv"
     compileSdk = 35
     defaultConfig {
         applicationId = "com.magma.player"
