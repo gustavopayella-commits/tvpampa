@@ -3,7 +3,6 @@ package com.pampatv
 
 import com.pampatv.R
 import android.app.Activity
-import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.os.Bundle
@@ -1579,17 +1578,15 @@ private fun PlayerDialog(
         }
     }
 
-    // En pantalla completa: orientación horizontal y barras del sistema ocultas.
-    // Al salir o cerrar el reproductor se restauran los valores anteriores.
+    // Pantalla completa sin forzar el giro del dispositivo.
+    // Forzar landscape desde un Dialog puede reiniciar la Activity y volver
+    // a mostrar el splash; por eso conservamos la orientación actual y solo
+    // ocultamos las barras del sistema mientras el reproductor está expandido.
     DisposableEffect(fullscreen) {
-        val window = activity?.window
-        val decorView = window?.decorView
-        val previousOrientation = activity?.requestedOrientation
+        val decorView = activity?.window?.decorView
         val previousSystemUi = decorView?.systemUiVisibility ?: 0
 
         if (fullscreen) {
-            activity?.requestedOrientation =
-                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             decorView?.systemUiVisibility = (
                 View.SYSTEM_UI_FLAG_FULLSCREEN or
                     View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
@@ -1598,14 +1595,13 @@ private fun PlayerDialog(
                     View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
                     View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                 )
+        } else if (decorView != null) {
+            decorView.systemUiVisibility = previousSystemUi
         }
 
         onDispose {
             if (decorView != null) {
                 decorView.systemUiVisibility = previousSystemUi
-            }
-            if (previousOrientation != null) {
-                activity?.requestedOrientation = previousOrientation
             }
         }
     }
